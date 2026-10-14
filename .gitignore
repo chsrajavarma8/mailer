@@ -1,0 +1,12 @@
+# Private data and credentials
+config.ini
+recipients.csv
+template.txt
+sent_log.csv
+audit_log.csv
+backups/
+attachments/*
+!attachments/.gitkeep
+
+__pycache__/
+*.pyc

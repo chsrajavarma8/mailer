@@ -1,0 +1,1441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Mailer</title>
+<style>
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f9fafb; --border: #e3e6ea; --border-strong: #cfd4da;
+  --text: #1c2026; --muted: #69717c; --accent: #2f6fde; --accent-hover: #2560c4; --accent-soft: #e8f0fd;
+  --ok: #1f8a4c; --ok-soft: #e4f4ea; --warn: #a86400; --warn-soft: #fdf1dc; --err: #c73636; --err-soft: #fbe7e7;
+  --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111317; --panel: #1a1d22; --panel-2: #20242a; --border: #2c3138; --border-strong: #3a4049;
+    --text: #e7e9ec; --muted: #9aa2ad; --accent: #5b93f5; --accent-hover: #75a5f7; --accent-soft: #1d2a40;
+    --ok: #4cc283; --ok-soft: #173225; --warn: #e2a64a; --warn-soft: #362a14; --err: #f07272; --err-soft: #3a1c1c;
+    --shadow: none; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, textarea, select { font: inherit; color: inherit; }
+code, kbd { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; }
+a { color: var(--accent); }
+
+header { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--border); }
+.bar { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 24px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 15px; white-space: nowrap; }
+.brand svg { color: var(--accent); }
+nav { display: flex; gap: 2px; height: 100%; }
+nav button { background: none; border: 0; padding: 0 14px; cursor: pointer; color: var(--muted); font-weight: 500;
+  border-bottom: 2px solid transparent; height: 100%; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+nav button:hover { color: var(--text); }
+nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+nav .count { background: var(--panel-2); border: 1px solid var(--border); border-radius: 99px; font-size: 11px; padding: 0 7px; color: var(--muted); }
+.right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.save-state { font-size: 12.5px; color: var(--muted); white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.save-state .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.save-state.saving .dot { background: var(--warn); }
+.save-state.error .dot { background: var(--err); }
+
+main { max-width: 1240px; margin: 0 auto; padding: 22px 20px 60px; }
+.view { display: none; }
+.view.active { display: block; }
+h2 { font-size: 18px; margin: 0 0 4px; font-weight: 650; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.card-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; flex-wrap: wrap; }
+.card-b { padding: 16px; }
+.card + .card, .stack > * + * { margin-top: 18px; }
+
+label.f { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 0 0 6px; }
+input[type=text], input[type=email], input[type=number], input[type=password], input[type=search], textarea, select {
+  width: 100%; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; vertical-align: middle; }
+textarea { resize: vertical; min-height: 340px; line-height: 1.6; }
+.check { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); background: var(--panel);
+  border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 500; white-space: nowrap; text-decoration: none; color: var(--text); }
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.danger { color: var(--err); }
+.btn.danger-solid { background: var(--err); border-color: var(--err); color: #fff; }
+.btn.ghost { border-color: transparent; background: none; }
+.btn.ghost:hover { background: var(--panel-2); }
+.btn.sm { padding: 4px 9px; font-size: 13px; }
+.btn.lg { padding: 10px 18px; font-size: 15px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.icon-btn { border: 0; background: none; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; display: inline-flex; vertical-align: middle; }
+.icon-btn:hover { color: var(--err); background: var(--err-soft); }
+.icon-btn.re:hover { color: var(--accent); background: var(--accent-soft); }
+
+.chip { display: inline-flex; align-items: center; gap: 4px; border: 1px dashed var(--border-strong); background: var(--panel-2);
+  border-radius: 6px; padding: 2px 8px; font-size: 12.5px; cursor: pointer; font-family: ui-monospace, Consolas, monospace; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.badge { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.err { background: var(--err-soft); color: var(--err); }
+.badge.info { background: var(--accent-soft); color: var(--accent); }
+.badge.mute { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+
+.compose { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
+.fields .hint { color: var(--muted); font-size: 12.5px; margin-right: 2px; }
+.mail { background: var(--panel); }
+.mail-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 64px 1fr; gap: 3px 10px; font-size: 13px; }
+.mail-head .k { color: var(--muted); }
+.mail-subject { font-size: 17px; font-weight: 600; padding: 16px 18px 0; }
+.mail-body { padding: 12px 18px 18px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.65; min-height: 200px; }
+.mail-body mark, .mail-subject mark { background: var(--warn-soft); color: var(--warn); border-radius: 3px; padding: 0 2px; }
+.mail-att { padding: 0 18px 16px; display: flex; flex-wrap: wrap; gap: 6px; }
+.file-pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; font-size: 12.5px; background: var(--panel-2); }
+.stepper { margin-left: auto; display: flex; align-items: center; gap: 6px; font-weight: 400; }
+.stepper select { width: auto; max-width: 220px; padding: 4px 8px; }
+.notice { margin: 12px 16px 0; padding: 9px 12px; border-radius: 8px; font-size: 13px; }
+.notice.warn { background: var(--warn-soft); color: var(--warn); }
+.notice.err { background: var(--err-soft); color: var(--err); }
+.notice.ok { background: var(--ok-soft); color: var(--ok); }
+.notice.info { background: var(--accent-soft); color: var(--accent); }
+.tpl-foot { display: flex; gap: 8px; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.tpl-foot .help { margin: 0; flex: 1; min-width: 180px; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.toolbar .search { width: 240px; margin-left: auto; }
+.table-wrap { overflow: auto; max-height: 62vh; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+thead th { position: sticky; top: 0; background: var(--panel-2); z-index: 1; font-size: 12.5px; color: var(--muted); font-weight: 600; padding: 0; }
+.grid td { padding: 0; }
+.grid td.num, .grid th.num { width: 44px; text-align: center; color: var(--muted); font-size: 12px; padding: 0 6px; }
+.grid td.act, .grid th.act { width: 120px; padding: 0 8px; text-align: right; white-space: nowrap; }
+.grid input.cell { border: 0; border-radius: 0; background: transparent; padding: 9px 10px; min-width: 140px; }
+.grid input.cell:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+.grid input.cell.bad { box-shadow: inset 0 0 0 1px var(--err); background: var(--err-soft); }
+.colh { display: flex; align-items: center; }
+.colh input { border: 0; background: transparent; padding: 9px 10px; font-weight: 600; color: var(--muted); font-size: 12.5px; min-width: 100px; }
+.colh input:focus { box-shadow: inset 0 0 0 2px var(--accent); color: var(--text); }
+.colh .icon-btn { margin-right: 4px; opacity: 0; }
+th:hover .colh .icon-btn { opacity: 1; }
+tr:hover td { background: var(--panel-2); }
+.empty { padding: 36px; text-align: center; color: var(--muted); }
+
+.drop { border: 1.5px dashed var(--border-strong); border-radius: var(--radius); padding: 18px; text-align: center; color: var(--muted); cursor: pointer; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.att-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.att-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.att-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-row .size { color: var(--muted); font-size: 12px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.stat { padding: 14px 16px; }
+.stat .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat .l { color: var(--muted); font-size: 12.5px; }
+.stat.ok .v { color: var(--ok); } .stat.warn .v { color: var(--warn); } .stat.err .v { color: var(--err); }
+.go { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.go p { margin: 0; color: var(--muted); flex: 1; min-width: 220px; }
+.progress { height: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 99px; overflow: hidden; margin: 14px 0 6px; }
+.progress div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.events { max-height: 300px; overflow: auto; font-size: 13px; border-top: 1px solid var(--border); }
+.events div { display: grid; grid-template-columns: 70px 72px 1fr; gap: 8px; padding: 6px 16px; border-bottom: 1px solid var(--border); }
+.events .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.problems { list-style: none; margin: 0; padding: 0; }
+.problems li { padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; font-size: 13px; flex-wrap: wrap; }
+.problems li:last-child { border-bottom: 0; }
+.log td, .log th { padding: 7px 12px; font-size: 13px; }
+.log th { padding: 8px 12px; }
+.log td.detail { color: var(--muted); }
+.log td.cb, .log th.cb { width: 36px; }
+.card-h .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; font-weight: 400; flex-wrap: wrap; }
+.card-h .tools input, .card-h .tools select { width: 200px; padding: 5px 9px; }
+.card-h .tools select { width: auto; }
+
+.settings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.form .full { grid-column: 1 / -1; }
+.help { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+.section-t { grid-column: 1 / -1; font-weight: 600; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--border); }
+.section-t:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; align-items: center; }
+.kv .k { color: var(--muted); }
+.shield { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 13px; }
+.shield li { display: flex; gap: 8px; align-items: flex-start; }
+.shield li::before { content: "✓"; color: var(--ok); font-weight: 700; }
+.danger-card { border-color: color-mix(in srgb, var(--err) 40%, var(--border)); }
+.danger-card .card-h { color: var(--err); }
+.bk { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; flex-wrap: wrap; }
+.bk:last-child { border-bottom: 0; }
+.bk .when { font-weight: 600; }
+.bk .what { color: var(--muted); flex: 1; min-width: 160px; }
+
+.guide { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 22px; align-items: start; }
+.toc { position: sticky; top: 76px; display: flex; flex-direction: column; gap: 1px; }
+.toc a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 6px; font-size: 13.5px; }
+.toc a:hover { background: var(--panel); color: var(--text); }
+.doc h3 { font-size: 16px; margin: 0 0 10px; }
+.doc section { scroll-margin-top: 76px; }
+.doc p, .doc li { line-height: 1.65; }
+.doc p { margin: 0 0 10px; }
+.doc ol, .doc ul { margin: 0 0 10px; padding-left: 22px; }
+.doc table { font-size: 13px; margin: 4px 0 10px; }
+.doc th, .doc td { padding: 7px 10px; vertical-align: top; }
+.doc thead th { position: static; }
+.doc pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow: auto; font-size: 12.5px; margin: 0 0 10px; }
+.doc pre code { border: 0; padding: 0; background: none; }
+.hero { padding: 22px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.hero .big { font-size: 22px; font-weight: 700; }
+.hero p { margin: 4px 0 0; color: var(--muted); max-width: 640px; }
+.steps { counter-reset: s; list-style: none; padding: 0 !important; display: grid; gap: 10px; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 30px 1fr; gap: 10px; }
+.steps li::before { content: counter(s); width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; display: grid; place-items: center; font-size: 13px; }
+.tech { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.tech div { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--panel-2); }
+.tech b { display: block; }
+.tech span { color: var(--muted); font-size: 12.5px; }
+details { border-bottom: 1px solid var(--border); padding: 9px 0; }
+details:last-child { border-bottom: 0; }
+summary { cursor: pointer; font-weight: 600; }
+details p { margin: 8px 0 0; color: var(--muted); }
+
+#login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+#login .card { width: min(380px, 100%); }
+#login .brand { justify-content: center; font-size: 18px; margin-bottom: 4px; }
+#login-err { color: var(--err); font-size: 13px; min-height: 20px; margin: 6px 0; }
+
+#toasts { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+.toast { background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); max-width: 380px; font-size: 13.5px; animation: in .18s ease-out; }
+.toast.err { background: var(--err); color: #fff; }
+@keyframes in { from { transform: translateY(8px); opacity: 0; } }
+dialog { border: 1px solid var(--border); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text); width: min(460px, calc(100vw - 32px)); box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+dialog::backdrop { background: rgba(10,12,16,.45); }
+dialog .card-b p { margin: 0 0 8px; }
+dialog .card-b label.f { margin-top: 12px; }
+dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+
+@media (max-width: 900px) {
+  .compose, .two, .settings, .guide { grid-template-columns: 1fr; }
+  .toc { position: static; flex-direction: row; flex-wrap: wrap; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .form { grid-template-columns: 1fr; }
+  .bar { gap: 10px; padding: 0 16px; overflow-x: auto; }
+  .brand span, .save-state span { display: none; }
+  main { padding: 16px 16px 60px; }
+  .toolbar .search { width: 100%; margin-left: 0; }
+  .card-h .tools { margin-left: 0; width: 100%; }
+  .card-h .tools input { flex: 1; }
+}
+</style>
+</head>
+<body>
+
+<div id="login" hidden>
+  <div class="card">
+    <div class="card-b" style="padding:26px">
+      <div class="brand">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Mailer is locked
+      </div>
+      <p class="sub" style="text-align:center;margin-bottom:16px">Enter the dashboard password to continue.</p>
+      <form id="login-form" autocomplete="off">
+        <label class="f" for="login-pw">Dashboard password</label>
+        <input type="password" id="login-pw" autocomplete="current-password" required>
+        <div id="login-err" role="alert"></div>
+        <button class="btn primary" style="width:100%;justify-content:center" type="submit" id="login-btn">Unlock</button>
+      </form>
+      <p class="help" style="text-align:center;margin-top:14px">Forgot it? Clear the <code>dashboard_password</code> line in <code>config.ini</code> and restart.</p>
+    </div>
+  </div>
+</div>
+
+<div id="app" hidden>
+<header>
+  <div class="bar">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+      <span>Mailer</span>
+    </div>
+    <nav>
+      <button data-tab="compose" class="active">Compose</button>
+      <button data-tab="recipients">Recipients <span class="count" id="nav-count">0</span></button>
+      <button data-tab="send">Send</button>
+      <button data-tab="settings">Settings</button>
+      <button data-tab="guide">Guide</button>
+    </nav>
+    <div class="right">
+      <div class="save-state" id="save-state"><i class="dot"></i><span>All changes saved</span></div>
+      <button class="btn sm" id="logout" hidden title="Lock the dashboard">🔒 Lock</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="view active" id="view-compose">
+    <h2>Compose</h2>
+    <p class="sub">Write once. <code>{column}</code> placeholders are filled in from each recipient's row.</p>
+    <div class="compose">
+      <div class="card">
+        <div class="card-h">Template</div>
+        <div class="card-b">
+          <label class="f" for="subject">Subject</label>
+          <input type="text" id="subject" placeholder="Hello {name}">
+          <label class="f" for="body" style="margin-top:14px">Message</label>
+          <textarea id="body" placeholder="Hi {name}, ..."></textarea>
+          <div class="fields" id="field-chips"></div>
+          <div class="tpl-foot">
+            <p class="help">Send the preview on the right to your own address to check how it looks in a real inbox.</p>
+            <button class="btn" id="test-email">Send test to me</button>
+          </div>
+        </div>
+      </div>
+      <div class="card mail">
+        <div class="card-h">Preview
+          <div class="stepper">
+            <button class="btn sm ghost" id="prev" title="Previous recipient">‹</button>
+            <select id="pick"></select>
+            <button class="btn sm ghost" id="next" title="Next recipient">›</button>
+          </div>
+        </div>
+        <div id="preview"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-recipients">
+    <h2>Recipients</h2>
+    <p class="sub">One row per email. Every column can be used as a placeholder. Edits save automatically.</p>
+    <div class="two">
+      <div>
+        <div class="toolbar">
+          <button class="btn" id="add-row">+ Add recipient</button>
+          <button class="btn" id="add-col">+ Add column</button>
+          <button class="btn" id="import-btn">Import CSV…</button>
+          <button class="btn" id="export-btn">Export CSV</button>
+          <button class="btn" id="dedupe">Remove duplicates</button>
+          <input type="file" id="import-file" accept=".csv,text/csv" hidden>
+          <input type="search" class="search" id="search" placeholder="Search recipients">
+        </div>
+        <div class="card"><div class="table-wrap"><table class="grid" id="grid"></table></div></div>
+        <p class="help">Rows marked <span class="badge ok">Sent</span> were already emailed. Use <b>↻</b> to send to that person again.</p>
+      </div>
+      <div class="card">
+        <div class="card-h">Attachments</div>
+        <div class="card-b">
+          <div class="att-list" id="att-list"></div>
+          <div class="drop" id="drop">Drop files here or <u>browse</u></div>
+          <input type="file" id="att-file" multiple hidden>
+          <p class="help">To attach a file to someone, pick it in their <b>attachment</b> column. Separate several files with <code>;</code>. Max 25 MB; programs and scripts are blocked.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-send">
+    <h2>Send</h2>
+    <p class="sub">Check everything looks right, then send. Recipients already sent to are skipped, unless you choose to resend below.</p>
+    <div class="stats">
+      <div class="card stat"><div class="v" id="st-total">0</div><div class="l">Recipients</div></div>
+      <div class="card stat ok"><div class="v" id="st-ready">0</div><div class="l">Ready to send</div></div>
+      <div class="card stat"><div class="v" id="st-done">0</div><div class="l">Already sent</div></div>
+      <div class="card stat err"><div class="v" id="st-bad">0</div><div class="l">Problems</div></div>
+    </div>
+    <div class="card">
+      <div class="card-b">
+        <div class="go">
+          <p id="go-text">Checking…</p>
+          <button class="btn danger" id="stop-btn" hidden>Stop</button>
+          <button class="btn primary lg" id="send-btn" disabled>Send emails</button>
+        </div>
+        <div id="run" hidden>
+          <div class="progress"><div id="bar"></div></div>
+          <div class="help" id="run-text"></div>
+        </div>
+      </div>
+      <div class="events" id="events" hidden></div>
+    </div>
+    <div class="card" id="problems-card" hidden>
+      <div class="card-h">Problems <span class="badge err" id="prob-count"></span><span class="help" style="margin:0;font-weight:400">These rows will fail until fixed.</span></div>
+      <ul class="problems" id="problems"></ul>
+    </div>
+    <div class="card">
+      <div class="card-h">Resend to members already sent <span class="badge mute" id="rs-count">0</span>
+        <div class="tools">
+          <input type="search" id="rs-search" placeholder="Search">
+          <button class="btn primary sm" id="rs-btn" disabled>Resend</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="max-height:320px"><table class="log" id="rs-table"></table></div>
+    </div>
+    <div class="card">
+      <div class="card-h">History <span class="help" style="margin:0;font-weight:400">from sent_log.csv</span>
+        <div class="tools">
+          <select id="log-filter"><option value="">All</option><option value="SENT">Sent</option><option value="FAILED">Failed</option></select>
+          <a class="btn sm" id="export-log" href="/api/log.csv" download="sent_log.csv">Export</a>
+          <button class="btn sm danger" id="clear-log">Clear history</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="max-height:340px"><table class="log" id="log"></table></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-settings">
+    <h2>Settings</h2>
+    <p class="sub">Mail account, dashboard security, and reset. Saved to <code>config.ini</code>.</p>
+    <div class="settings">
+      <div class="stack">
+        <div class="card">
+          <div class="card-h">Mail account</div>
+          <div class="card-b">
+            <div id="cfg-error"></div>
+            <form class="form" id="cfg" autocomplete="off">
+              <div class="section-t">Sender</div>
+              <div><label class="f" for="c-from_name">Display name</label><input type="text" id="c-from_name"></div>
+              <div><label class="f" for="c-from_email">From address</label><input type="email" id="c-from_email"></div>
+
+              <div class="section-t">Mail server (SMTP)</div>
+              <div><label class="f" for="c-host">Server</label><input type="text" id="c-host" placeholder="smtp.gmail.com">
+                <div class="help">Gmail: smtp.gmail.com · Outlook: smtp.office365.com</div></div>
+              <div><label class="f" for="c-port">Port</label><input type="number" id="c-port" placeholder="587">
+                <div class="help">587 (STARTTLS) or 465 (SSL)</div></div>
+              <div><label class="f" for="c-username">Login</label><input type="text" id="c-username"></div>
+              <div><label class="f" for="c-password">App password</label><input type="password" id="c-password" autocomplete="new-password">
+                <div class="help" id="pw-help"></div></div>
+              <div class="full help">Gmail needs a 16-character App Password, not your normal one. Turn on 2-Step Verification, then create one at
+                <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">myaccount.google.com/apppasswords</a>.</div>
+
+              <div class="section-t">Sending</div>
+              <div><label class="f" for="c-delay">Seconds between emails</label><input type="number" id="c-delay" min="0" step="0.5">
+                <div class="help">A short pause helps avoid being flagged as spam.</div></div>
+              <div></div>
+
+              <div class="full row" style="margin-top:6px">
+                <button class="btn primary" type="submit">Save settings</button>
+                <button class="btn" type="button" id="test-btn">Test connection</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="card danger-card">
+          <div class="card-h">Reset dashboard</div>
+          <div class="card-b">
+            <p style="margin:0 0 10px">Start fresh for a new campaign. Choose what to clear:</p>
+            <div id="reset-parts">
+              <label class="check"><input type="checkbox" value="recipients" checked> Recipient list <span class="help" style="margin:0">(recipients.csv)</span></label>
+              <label class="check"><input type="checkbox" value="template" checked> Subject and message <span class="help" style="margin:0">(template.txt)</span></label>
+              <label class="check"><input type="checkbox" value="history" checked> Send history <span class="help" style="margin:0">(sent_log.csv)</span></label>
+              <label class="check"><input type="checkbox" value="attachments" checked> Attachment files <span class="help" style="margin:0">(attachments/)</span></label>
+            </div>
+            <label class="check" style="margin-top:6px"><input type="checkbox" id="reset-backup" checked> Save a backup first (recommended)</label>
+            <div class="notice info" style="margin:12px 0">Never touched: sender name, SMTP login, app password and security settings.</div>
+            <button class="btn danger-solid" id="reset-btn">Reset dashboard…</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="card-h">Security</div>
+          <div class="card-b">
+            <div class="form" style="grid-template-columns:1fr">
+              <div class="section-t">Dashboard lock <span class="badge" id="lock-badge"></span></div>
+              <div id="lock-form"></div>
+
+              <div class="section-t">Session timeout</div>
+              <div class="row">
+                <input type="number" id="sess-min" min="5" max="1440" style="width:110px">
+                <span class="help" style="margin:0">minutes of inactivity before you must log in again</span>
+                <button class="btn sm" id="sess-save">Save</button>
+              </div>
+
+              <div class="section-t">App password storage <span class="badge" id="smtp-badge"></span></div>
+              <div id="smtp-store"></div>
+
+              <div class="section-t">Always on</div>
+              <ul class="shield">
+                <li>Only reachable from this computer (127.0.0.1), with Host-header checks against DNS rebinding.</li>
+                <li>HttpOnly, SameSite=Strict session cookie plus a per-session CSRF token on every change.</li>
+                <li>Strict Content-Security-Policy with a per-page script nonce; no third-party scripts; framing blocked.</li>
+                <li>TLS certificate verification for the mail server; the app password is never sent back to the browser.</li>
+                <li>Attachments limited to the <code>attachments/</code> folder; dangerous file types and oversize uploads blocked.</li>
+                <li>Wrong-password lockout with growing delays; destructive actions ask for the password again.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">Backups <span class="badge mute" id="bk-count">0</span><span class="help" style="margin:0;font-weight:400">in the backups/ folder</span></div>
+          <div class="card-b" id="backups" style="padding-top:6px;padding-bottom:6px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">Audit log <span class="help" style="margin:0;font-weight:400">latest 200 events, from audit_log.csv</span></div>
+          <div class="table-wrap" style="max-height:300px"><table class="log" id="audit"></table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-guide">
+    <div class="guide">
+      <nav class="toc" id="toc">
+        <a href="#g-overview">Overview</a>
+        <a href="#g-start">Getting started</a>
+        <a href="#g-tour">Using the dashboard</a>
+        <a href="#g-templates">Placeholders &amp; attachments</a>
+        <a href="#g-resend">Resending</a>
+        <a href="#g-reset">Reset &amp; backups</a>
+        <a href="#g-security">Security</a>
+        <a href="#g-tech">Technology</a>
+        <a href="#g-files">Files &amp; folders</a>
+        <a href="#g-cli">Command line</a>
+        <a href="#g-faq">Troubleshooting</a>
+        <a href="#g-system">System info</a>
+      </nav>
+      <div class="doc stack">
+        <section class="card" id="g-overview">
+          <div class="hero">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+            <div>
+              <div class="big">Mailer <span class="badge info" id="g-version"></span></div>
+              <p>A private, self-hosted bulk email tool. It sends a personalised email to every person on a list, using your own Gmail or Outlook account, from a dashboard that runs only on your computer.</p>
+            </div>
+          </div>
+          <div class="card-b" style="border-top:1px solid var(--border)">
+            <ul style="margin:0">
+              <li><b>Personalised:</b> any column in your list (name, branch, slot…) can be dropped into the subject or message.</li>
+              <li><b>Safe to re-run:</b> everyone who received the email is recorded, so an interrupted send just picks up where it stopped.</li>
+              <li><b>Private:</b> no cloud service, no account, no installs. Your list and password never leave your machine except to your own mail server.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="card" id="g-start">
+          <div class="card-h">Getting started</div>
+          <div class="card-b">
+            <ol class="steps">
+              <li><div><b>Install Python 3.9 or newer.</b> Get it from <a href="https://www.python.org/downloads/" target="_blank" rel="noopener noreferrer">python.org</a> and tick “Add Python to PATH”. Nothing else to install.</div></li>
+              <li><div><b>Start the dashboard.</b> Open a terminal in the project folder and run:<pre><code>python app.py</code></pre>Your browser opens <code>http://127.0.0.1:8765</code>. Keep the terminal open while you work; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it.</div></li>
+              <li><div><b>Create a Gmail App Password.</b> Turn on 2-Step Verification, then create one at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">myaccount.google.com/apppasswords</a>.</div></li>
+              <li><div><b>Settings → Mail account.</b> Enter your name, address, login and the app password. Click <b>Test connection</b>.</div></li>
+              <li><div><b>Settings → Security.</b> Set a dashboard password and click <b>Encrypt now</b> for the app password (recommended).</div></li>
+              <li><div><b>Recipients.</b> Import a CSV (it must have an <code>email</code> column) or type rows in. Click <b>Remove duplicates</b>.</div></li>
+              <li><div><b>Compose.</b> Write the subject and message, insert <code>{name}</code>-style fields, and step through the preview. Click <b>Send test to me</b>.</div></li>
+              <li><div><b>Send.</b> Fix anything listed under Problems, then click <b>Send</b> and watch the progress.</div></li>
+            </ol>
+          </div>
+        </section>
+
+        <section class="card" id="g-tour">
+          <div class="card-h">Using the dashboard</div>
+          <div class="card-b">
+            <table>
+              <thead><tr><th>Tab</th><th>What it does</th></tr></thead>
+              <tbody>
+                <tr><td><b>Compose</b></td><td>Edit the subject and message, insert fields, preview the exact email for each person, send yourself a test.</td></tr>
+                <tr><td><b>Recipients</b></td><td>Spreadsheet-style editor: add/rename/delete columns, import and export CSV, search, remove duplicates, upload attachments, resend to one person.</td></tr>
+                <tr><td><b>Send</b></td><td>Pre-flight check (ready / already sent / problems), live progress with Stop, resend to chosen people, filterable and exportable history.</td></tr>
+                <tr><td><b>Settings</b></td><td>Mail account, dashboard lock, session timeout, password encryption, reset, backups and the audit log.</td></tr>
+                <tr><td><b>Guide</b></td><td>This page, plus live system information.</td></tr>
+              </tbody>
+            </table>
+            <p class="help">Everything saves automatically; the dot in the top bar shows the save status.</p>
+          </div>
+        </section>
+
+        <section class="card" id="g-templates">
+          <div class="card-h">Placeholders &amp; attachments</div>
+          <div class="card-b">
+            <p>Write <code>{column}</code> anywhere in the subject or message. With a list like this:</p>
+            <pre><code>email,name,slot
+asha@example.com,Asha,10:00 AM</code></pre>
+            <p><code>Hi {name}, your slot is {slot}.</code> becomes <code>Hi Asha, your slot is 10:00 AM.</code> Unknown fields are highlighted in the preview and left as-is.</p>
+            <p>To attach files, upload them on the Recipients tab and choose them in each person's <code>attachment</code> column. Several files: <code>brochure.pdf;map.png</code>. Only files inside <code>attachments/</code> can be sent.</p>
+          </div>
+        </section>
+
+        <section class="card" id="g-resend">
+          <div class="card-h">Resending</div>
+          <div class="card-b">
+            <p>Normally anyone already marked <span class="badge ok">Sent</span> is skipped so nobody gets a duplicate. To send again on purpose:</p>
+            <ul>
+              <li><b>One person:</b> click <b>↻</b> on their row in Recipients.</li>
+              <li><b>Several or all:</b> on the Send tab, tick people under <b>Resend to members already sent</b> (or tick the header box for everyone), then click <b>Resend</b>.</li>
+            </ul>
+            <p>Resends are recorded in the history with the note <i>resend</i>. Failed sends are never marked as sent, so a normal Send retries them.</p>
+          </div>
+        </section>
+
+        <section class="card" id="g-reset">
+          <div class="card-h">Reset &amp; backups</div>
+          <div class="card-b">
+            <p><b>Settings → Reset dashboard</b> clears the recipient list, subject and message, send history and attachments (pick any of them) so you can start a new campaign. Your mail account, app password and security settings are kept.</p>
+            <p>A backup is saved to <code>backups/</code> first. Restore any backup from the Backups card; the current state is backed up again before restoring, so a restore can be undone too. Clearing history also makes a backup.</p>
+          </div>
+        </section>
+
+        <section class="card" id="g-security">
+          <div class="card-h">Security</div>
+          <div class="card-b">
+            <table>
+              <thead><tr><th>Protection</th><th>How</th></tr></thead>
+              <tbody>
+                <tr><td>Network exposure</td><td>Listens on <code>127.0.0.1</code> only; requests with any other Host header are refused (blocks DNS-rebinding).</td></tr>
+                <tr><td>Dashboard lock</td><td>Optional password, hashed with PBKDF2-SHA256 (600,000 rounds, random salt). Never stored in plain text.</td></tr>
+                <tr><td>Brute force</td><td>After 5 wrong passwords, logins pause for 30 s, doubling each time (up to 15 min).</td></tr>
+                <tr><td>Sessions</td><td>Random 256-bit session ID in an HttpOnly, SameSite=Strict cookie; expires after the idle timeout; changing the password signs out other sessions.</td></tr>
+                <tr><td>Cross-site attacks</td><td>Per-session CSRF token on every change; JSON-only requests force a CORS preflight that is never approved.</td></tr>
+                <tr><td>Script injection</td><td>Content-Security-Policy with a per-page nonce, all output escaped, <code>X-Frame-Options: DENY</code>, <code>nosniff</code>, no referrer.</td></tr>
+                <tr><td>App password</td><td>Encrypted at rest with Windows DPAPI (only your Windows account can read it); never sent to the browser.</td></tr>
+                <tr><td>Mail transport</td><td>STARTTLS (587) or SSL (465) with full certificate verification.</td></tr>
+                <tr><td>Files</td><td>Attachments confined to <code>attachments/</code>; executables/scripts blocked; 25 MB upload cap; header-injection safe.</td></tr>
+                <tr><td>Accountability</td><td>Logins, settings changes, sends, resets and restores are recorded in <code>audit_log.csv</code> (never passwords).</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card" id="g-tech">
+          <div class="card-h">Technology</div>
+          <div class="card-b">
+            <p>Built entirely on the Python standard library and plain web technologies. No frameworks, no package installs, no CDN, so there is nothing to update or break.</p>
+            <div class="tech">
+              <div><b>Python 3 (stdlib only)</b><span>Backend, CLI and server</span></div>
+              <div><b>http.server</b><span>Threaded local web server and JSON API</span></div>
+              <div><b>smtplib + ssl</b><span>SMTP with STARTTLS / SSL and verified certificates</span></div>
+              <div><b>email.message</b><span>Builds MIME emails with UTF-8 text and attachments</span></div>
+              <div><b>csv · configparser</b><span>Recipient list, logs and settings as plain files</span></div>
+              <div><b>hashlib · hmac · secrets</b><span>PBKDF2 hashing, constant-time checks, secure tokens</span></div>
+              <div><b>ctypes → Windows DPAPI</b><span>Encrypts the app password per Windows user</span></div>
+              <div><b>threading</b><span>Background sending with live progress and Stop</span></div>
+              <div><b>HTML5 · CSS3</b><span>Responsive layout, automatic light/dark theme</span></div>
+              <div><b>Vanilla JavaScript</b><span>Single-page dashboard using fetch(); no libraries</span></div>
+              <div><b>Gmail / Outlook SMTP</b><span>Delivery through your own account and App Password</span></div>
+              <div><b>CSV / INI / TXT</b><span>Data is human-readable and editable in Excel or Notepad</span></div>
+            </div>
+            <p class="help">Flow: browser ⇄ local API (app.py) → send_mails.py builds each message → your SMTP server delivers it → result appended to sent_log.csv.</p>
+          </div>
+        </section>
+
+        <section class="card" id="g-files">
+          <div class="card-h">Files &amp; folders</div>
+          <div class="card-b">
+            <table>
+              <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td><code>app.py</code></td><td>Dashboard server and API</td></tr>
+                <tr><td><code>ui/index.html</code></td><td>The dashboard itself</td></tr>
+                <tr><td><code>send_mails.py</code></td><td>Message building and sending; also usable on its own from the command line</td></tr>
+                <tr><td><code>secure_store.py</code></td><td>Windows DPAPI encryption for the app password</td></tr>
+                <tr><td><code>recipients.csv</code></td><td>The list; must have an <code>email</code> column</td></tr>
+                <tr><td><code>template.txt</code></td><td>First line <code>Subject: …</code>, then the message</td></tr>
+                <tr><td><code>config.ini</code></td><td>Mail account, delay and security settings</td></tr>
+                <tr><td><code>attachments/</code></td><td>Files that can be attached</td></tr>
+                <tr><td><code>sent_log.csv</code></td><td>Every SENT / FAILED result (decides who is skipped)</td></tr>
+                <tr><td><code>audit_log.csv</code></td><td>Security and admin events</td></tr>
+                <tr><td><code>backups/</code></td><td>Snapshots made by reset, clear history and restore</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card" id="g-cli">
+          <div class="card-h">Command line</div>
+          <div class="card-b">
+<pre><code>python app.py                      # dashboard on http://127.0.0.1:8765
+python app.py --port 9000 --no-browser
+
+python send_mails.py               # dry run: print every email, send nothing
+python send_mails.py --send        # send to everyone not yet sent
+python send_mails.py --send --resend   # send to everyone, including already sent</code></pre>
+            <p>To keep the app password out of files entirely, set it for the session instead: <code>$env:MAIL_PASSWORD = "abcdefghijklmnop"</code></p>
+          </div>
+        </section>
+
+        <section class="card" id="g-faq">
+          <div class="card-h">Troubleshooting</div>
+          <div class="card-b">
+            <details><summary>“Login failed” / “Username and Password not accepted”</summary><p>Gmail needs a 16-character App Password, not your normal password. 2-Step Verification must be on. Paste it in Settings and click Test connection.</p></details>
+            <details><summary>Many “Connection unexpectedly closed” or “please run connect() first” errors</summary><p>The server dropped the connection. Mailer now reconnects automatically and retries. If it keeps happening you have probably hit the daily limit (about 500 a day for personal Gmail, 2,000 for Google Workspace); wait 24 hours, then click Send again. Failed people are retried, sent people are skipped.</p></details>
+            <details><summary>Emails go to spam</summary><p>Increase the delay between emails, keep links few, avoid all-caps subjects, send yourself a test first, and send from an address recipients recognise.</p></details>
+            <details><summary>“attachment not found” or “must be in the attachments folder”</summary><p>Upload the file on the Recipients tab and use the name shown there (for example <code>attachments/brochure.pdf</code>).</p></details>
+            <details><summary>I forgot the dashboard password</summary><p>Stop the server, open <code>config.ini</code>, clear the value after <code>dashboard_password =</code>, then start again. Your mail settings are not affected.</p></details>
+            <details><summary>“The saved password could not be decrypted”</summary><p>The app password was encrypted by a different Windows user or computer. Enter it again in Settings.</p></details>
+            <details><summary>Port 8765 is already in use</summary><p>Mailer is probably already running in another terminal. Or start it on another port: <code>python app.py --port 9000</code>.</p></details>
+          </div>
+        </section>
+
+        <section class="card" id="g-system">
+          <div class="card-h">System info <button class="btn sm" id="about-refresh" style="margin-left:auto">Refresh</button></div>
+          <div class="card-b" id="about"><span class="help">Loading…</span></div>
+        </section>
+      </div>
+    </div>
+  </section>
+</main>
+</div>
+
+<div id="toasts"></div>
+<dialog id="dlg">
+  <div class="card-h" id="dlg-title"></div>
+  <div class="card-b" id="dlg-body"></div>
+  <div class="actions"><button class="btn" value="cancel" id="dlg-cancel">Cancel</button><button class="btn primary" id="dlg-ok">OK</button></div>
+</dialog>
+
+<script nonce="__CSP_NONCE__">
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const EMAIL_RE = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
+const S = { subject: "", body: "", columns: [], rows: [], config: null, attachments: [], log: [], sent: new Set(),
+  pick: 0, csrf: "", lock: false, booted: false };
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const fmtTime = t => String(t || "").replace("T", " ");
+
+async function api(path, data, raw) {
+  const opt = data === undefined ? {} : {
+    method: "POST",
+    headers: { "Content-Type": raw ? "application/octet-stream" : "application/json", "X-CSRF-Token": S.csrf },
+    body: raw ? data : JSON.stringify(data),
+  };
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({ error: "Bad response from server" }));
+  if (r.status === 401 && j.auth) { showLogin(j.error); throw new Error(j.error || "Login required"); }
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg, err) {
+  const t = document.createElement("div");
+  t.className = "toast" + (err ? " err" : "");
+  t.textContent = msg;
+  $("#toasts").append(t);
+  setTimeout(() => t.remove(), err ? 6000 : 3000);
+}
+/* opts.require: OK stays disabled until #d-confirm equals this text */
+function confirmDlg(title, html, okText = "OK", danger = false, opts = {}) {
+  return new Promise(res => {
+    const d = $("#dlg");
+    $("#dlg-title").textContent = title;
+    $("#dlg-body").innerHTML = html;
+    const ok = $("#dlg-ok");
+    ok.textContent = okText;
+    ok.className = "btn " + (danger ? "danger-solid" : "primary");
+    ok.disabled = false;
+    if (opts.require) {
+      const inp = $("#d-confirm");
+      const upd = () => ok.disabled = inp.value.trim() !== opts.require;
+      inp.oninput = upd; upd();
+    }
+    const done = v => { d.close(); ok.onclick = $("#dlg-cancel").onclick = null; res(v); };
+    ok.onclick = () => done(true);
+    $("#dlg-cancel").onclick = () => done(false);
+    d.oncancel = () => done(false);
+    $("#dlg-body").onkeydown = e => { if (e.key === "Enter" && e.target.tagName === "INPUT" && !ok.disabled) { e.preventDefault(); done(true); } };
+    d.showModal();
+    $("#dlg-body input")?.focus();
+  });
+}
+const pwField = () => S.lock ? `<label class="f" for="d-pw">Dashboard password</label><input type="password" id="d-pw" autocomplete="current-password">` : "";
+const dlgPw = () => $("#d-pw")?.value || "";
+
+function showLogin(msg) {
+  $("#app").hidden = true;
+  $("#login").hidden = false;
+  $("#login-err").textContent = msg && msg !== "login required" ? msg : "";
+  $("#login-pw").value = "";
+  $("#login-pw").focus();
+}
+$("#login-form").onsubmit = async e => {
+  e.preventDefault();
+  const b = $("#login-btn");
+  b.disabled = true; b.textContent = "Checking…";
+  try {
+    const r = await api("/api/login", { password: $("#login-pw").value });
+    S.csrf = r.csrf; S.lock = r.lock;
+    $("#login").hidden = true;
+    await boot();
+  } catch (er) {
+    $("#login-err").textContent = er.message;
+    $("#login-pw").select();
+  } finally { b.disabled = false; b.textContent = "Unlock"; }
+};
+$("#logout").onclick = async () => {
+  try { await flushSaves(); } catch {}
+  await api("/api/logout", {}).catch(() => {});
+  S.csrf = "";
+  showLogin();
+};
+
+const timers = {};
+let pending = 0;
+function setSave(state, text) {
+  const el = $("#save-state");
+  el.className = "save-state " + state;
+  el.querySelector("span").textContent = text;
+}
+function autosave(key, fn, wait = 600) {
+  clearTimeout(timers[key]);
+  setSave("saving", "Saving…");
+  timers[key] = setTimeout(async () => {
+    pending++;
+    try { await fn(); if (--pending === 0) setSave("", "All changes saved"); }
+    catch (e) { pending--; setSave("error", "Not saved"); toast(e.message, true); }
+  }, wait);
+}
+const saveTemplate = () => autosave("tpl", () => api("/api/template", { subject: S.subject, body: S.body }));
+const saveRecipients = () => autosave("csv", () => api("/api/recipients", { columns: S.columns, rows: S.rows }));
+async function flushSaves() {
+  for (const k in timers) clearTimeout(timers[k]);
+  await api("/api/template", { subject: S.subject, body: S.body });
+  await api("/api/recipients", { columns: S.columns, rows: S.rows });
+  setSave("", "All changes saved");
+}
+
+function show(tab) {
+  $$("header nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + tab));
+  if (tab === "send") checkAll();
+  if (tab === "compose") { renderPicker(); preview(); }
+  if (tab === "settings") loadSecurity();
+  if (tab === "guide") loadAbout();
+  try { localStorage.setItem("mailer-tab", tab); } catch {}
+}
+$$("header nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
+document.addEventListener("click", e => {
+  const g = e.target.closest("[data-go]");
+  if (g) { e.preventDefault(); show(g.dataset.go); }
+});
+
+function renderChips() {
+  $("#field-chips").innerHTML = '<span class="hint">Insert:</span>' +
+    S.columns.filter(c => c !== "attachment").map(c => `<button class="chip" data-col="${esc(c)}">{${esc(c)}}</button>`).join("");
+}
+let lastField = "body";
+["subject", "body"].forEach(id => $("#" + id).addEventListener("focus", () => lastField = id));
+$("#field-chips").onclick = e => {
+  const c = e.target.closest(".chip"); if (!c) return;
+  const el = $("#" + lastField), ins = "{" + c.dataset.col + "}";
+  const s = el.selectionStart ?? el.value.length, en = el.selectionEnd ?? s;
+  el.setRangeText(ins, s, en, "end");
+  el.focus();
+  el.dispatchEvent(new Event("input"));
+};
+$("#subject").oninput = e => { S.subject = e.target.value; saveTemplate(); preview(); };
+$("#body").oninput = e => { S.body = e.target.value; saveTemplate(); preview(); };
+
+function renderPicker() {
+  const sel = $("#pick");
+  S.pick = Math.min(S.pick, Math.max(0, S.rows.length - 1));
+  sel.innerHTML = S.rows.length
+    ? S.rows.map((r, i) => `<option value="${i}">${i + 1}. ${esc(r.email || "(no email)")}</option>`).join("")
+    : "<option>No recipients</option>";
+  sel.value = S.pick;
+  $("#prev").disabled = S.pick <= 0;
+  $("#next").disabled = S.pick >= S.rows.length - 1;
+}
+$("#pick").onchange = e => { S.pick = +e.target.value; renderPicker(); preview(); };
+$("#prev").onclick = () => { S.pick--; renderPicker(); preview(); };
+$("#next").onclick = () => { S.pick++; renderPicker(); preview(); };
+
+const highlight = (text, missing) => {
+  let h = esc(text);
+  for (const m of missing) h = h.split("{" + esc(m) + "}").join(`<mark>{${esc(m)}}</mark>`);
+  return h;
+};
+let pvTimer, pvSeq = 0;
+function preview() {
+  clearTimeout(pvTimer);
+  pvTimer = setTimeout(async () => {
+    const box = $("#preview");
+    const row = S.rows[S.pick];
+    if (!row) { box.innerHTML = '<div class="empty">Add a recipient to see a preview.</div>'; return; }
+    const seq = ++pvSeq;
+    try {
+      const { items: [it] } = await api("/api/preview", { subject: S.subject, body: S.body, rows: [row] });
+      if (seq !== pvSeq) return;
+      let note = "";
+      if (it.error) note = `<div class="notice err">${esc(it.error)}</div>`;
+      else if (it.missing.length) note = `<div class="notice warn">This row has no column for ${it.missing.map(m => `<b>{${esc(m)}}</b>`).join(", ")}; it will be sent as-is.</div>`;
+      if (it.already_sent) note += `<div class="notice ok">Already sent to this address. It will be skipped unless you resend.</div>`;
+      if (it.error && !it.subject) { box.innerHTML = note; return; }
+      box.innerHTML = note + `
+        <div class="mail-head" style="${note ? "margin-top:12px;border-top:1px solid var(--border)" : ""}">
+          <span class="k">From</span><span>${esc(it.from_)}</span>
+          <span class="k">To</span><span>${esc(it.email)}</span>
+        </div>
+        <div class="mail-subject">${highlight(it.subject, it.missing) || '<span style="color:var(--muted)">(no subject)</span>'}</div>
+        <div class="mail-body">${highlight(it.body, it.missing)}</div>
+        ${it.attachments.length ? `<div class="mail-att">${it.attachments.map(a => `<span class="file-pill">📎 ${esc(a)}</span>`).join("")}</div>` : ""}`;
+    } catch (e) {
+      if (seq === pvSeq) box.innerHTML = `<div class="notice err" style="margin-bottom:16px">${esc(e.message)}</div>`;
+    }
+  }, 250);
+}
+$("#test-email").onclick = async () => {
+  if (!S.config?.has_password) return toast("Add an App Password in Settings first.", true);
+  if (!S.subject.trim()) return toast("Add a subject first.", true);
+  const b = $("#test-email");
+  b.disabled = true; b.textContent = "Sending…";
+  try { toast((await api("/api/test-email", { subject: S.subject, body: S.body, row: S.rows[S.pick] || {} })).message); }
+  catch (e) { toast(e.message, true); }
+  finally { b.disabled = false; b.textContent = "Send test to me"; }
+};
+
+const X = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+const RE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>';
+function renderGrid() {
+  const q = $("#search").value.trim().toLowerCase();
+  const cols = S.columns;
+  const head = `<thead><tr><th class="num">#</th>${cols.map((c, ci) => `
+    <th><div class="colh"><input value="${esc(c)}" data-ci="${ci}" ${c === "email" ? "readonly title='Required column'" : "class='colname'"}>
+    ${c === "email" ? "" : `<button class="icon-btn" data-delcol="${ci}" title="Delete column">${X}</button>`}</div></th>`).join("")}
+    <th class="act"></th></tr></thead>`;
+  const rows = S.rows.map((r, i) => [r, i]).filter(([r]) => !q || cols.some(c => String(r[c] || "").toLowerCase().includes(q)));
+  const body = rows.map(([r, i]) => {
+    const sent = S.sent.has((r.email || "").trim().toLowerCase());
+    return `<tr>
+      <td class="num">${i + 1}</td>
+      ${cols.map(c => `<td><input class="cell${c === "email" && r.email && !EMAIL_RE.test(r.email.trim()) ? " bad" : ""}"
+        data-r="${i}" data-c="${esc(c)}" value="${esc(r[c] || "")}" ${c === "attachment" ? 'list="att-options"' : ""}
+        ${c === "email" ? 'type="email" placeholder="name@example.com"' : ""}></td>`).join("")}
+      <td class="act">${sent ? `<span class="badge ok">Sent</span><button class="icon-btn re" data-resend="${i}" title="Resend to this person">${RE}</button>` : ""}
+        <button class="icon-btn" data-delrow="${i}" title="Remove recipient">${X}</button></td>
+    </tr>`;
+  }).join("");
+  $("#grid").innerHTML = head + `<tbody>${body}</tbody>` +
+    (rows.length ? "" : `<tbody><tr><td colspan="${cols.length + 2}" class="empty">${q ? "No matches." : "No recipients yet. Add one or import a CSV."}</td></tr></tbody>`);
+  $("#nav-count").textContent = S.rows.length;
+}
+
+$("#grid").addEventListener("input", e => {
+  const t = e.target;
+  if (t.classList.contains("cell")) {
+    S.rows[+t.dataset.r][t.dataset.c] = t.value;
+    if (t.dataset.c === "email") t.classList.toggle("bad", !!t.value && !EMAIL_RE.test(t.value.trim()));
+    $("#nav-count").textContent = S.rows.length;
+    saveRecipients();
+  }
+});
+$("#grid").addEventListener("change", e => {
+  const t = e.target;
+  if (!t.classList.contains("colname")) return;
+  const ci = +t.dataset.ci, old = S.columns[ci], name = t.value.trim().replace(/[{}]/g, "");
+  if (!name || (name !== old && S.columns.includes(name))) { toast(name ? `There is already a "${name}" column` : "Column name can't be empty", true); t.value = old; return; }
+  S.columns[ci] = name;
+  S.rows.forEach(r => { r[name] = r[old] ?? ""; if (name !== old) delete r[old]; });
+  saveRecipients(); renderChips(); renderGrid();
+});
+$("#grid").addEventListener("click", async e => {
+  const dr = e.target.closest("[data-delrow]"), dc = e.target.closest("[data-delcol]"), rs = e.target.closest("[data-resend]");
+  if (dr) { S.rows.splice(+dr.dataset.delrow, 1); saveRecipients(); renderGrid(); }
+  if (rs) resend([S.rows[+rs.dataset.resend].email.trim()]);
+  if (dc) {
+    const c = S.columns[+dc.dataset.delcol];
+    if (!await confirmDlg("Delete column?", `<p>Remove <b>${esc(c)}</b> and its values from every recipient?</p>`, "Delete", true)) return;
+    S.columns.splice(+dc.dataset.delcol, 1);
+    S.rows.forEach(r => delete r[c]);
+    saveRecipients(); renderChips(); renderGrid();
+  }
+});
+$("#search").oninput = renderGrid;
+$("#add-row").onclick = () => {
+  $("#search").value = "";
+  S.rows.push(Object.fromEntries(S.columns.map(c => [c, ""])));
+  saveRecipients(); renderGrid();
+  const inputs = $$(`#grid input[data-r="${S.rows.length - 1}"]`);
+  inputs[0]?.focus(); inputs[0]?.scrollIntoView({ block: "nearest" });
+};
+$("#add-col").onclick = () => {
+  let n = 1, name;
+  do name = "field" + n++; while (S.columns.includes(name));
+  S.columns.push(name);
+  saveRecipients(); renderChips(); renderGrid();
+  const inp = $(`#grid input[data-ci="${S.columns.length - 1}"]`);
+  inp?.focus(); inp?.select();
+};
+$("#dedupe").onclick = async () => {
+  const seen = new Set(), keep = [];
+  let dupes = 0, blank = 0;
+  for (const r of S.rows) {
+    const k = (r.email || "").trim().toLowerCase();
+    if (!k && !Object.values(r).some(v => String(v).trim())) { blank++; continue; }
+    if (k && seen.has(k)) { dupes++; continue; }
+    seen.add(k); keep.push(r);
+  }
+  if (!dupes && !blank) return toast("No duplicate or empty rows found");
+  if (!await confirmDlg("Remove duplicates?", `<p>Remove <b>${plural(dupes, "duplicate")}</b> (same email, keeping the first) and <b>${plural(blank, "empty row")}</b>?</p>`, "Remove")) return;
+  S.rows = keep;
+  saveRecipients(); renderGrid(); renderPicker();
+  toast(`Removed ${dupes + blank} rows`);
+};
+
+function parseCSV(text) {
+  const rows = []; let row = [], f = "", q = false;
+  text = text.replace(/^﻿/, "");
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(f); f = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
+    else f += ch;
+  }
+  if (f || row.length) { row.push(f); rows.push(row); }
+  return rows.filter(r => r.some(v => v.trim()));
+}
+const csvCell = v => { v = String(v ?? ""); return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+function download(name, text, type = "text/csv") {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + text], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$("#export-btn").onclick = () => download("recipients.csv",
+  [S.columns.map(csvCell).join(","), ...S.rows.map(r => S.columns.map(c => csvCell(r[c])).join(","))].join("\r\n") + "\r\n");
+$("#import-btn").onclick = () => $("#import-file").click();
+$("#import-file").onchange = async e => {
+  const file = e.target.files[0]; e.target.value = "";
+  if (!file) return;
+  const data = parseCSV(await file.text());
+  if (!data.length) return toast("That file is empty", true);
+  const cols = data[0].map(c => c.trim().toLowerCase() === "email" ? "email" : c.trim().replace(/[{}]/g, ""));
+  if (!cols.includes("email")) return toast("The CSV needs an 'email' column", true);
+  const rows = data.slice(1).map(r => Object.fromEntries(cols.map((c, i) => [c, (r[i] || "").trim()])));
+  const replace = S.rows.length && await confirmDlg("Import CSV",
+    `<p><b>${rows.length}</b> recipients found in ${esc(file.name)}.</p><p>Replace the current list, or cancel to add them to it?</p>`, "Replace list");
+  if (replace || !S.rows.length) { S.columns = cols; S.rows = rows; }
+  else { cols.forEach(c => S.columns.includes(c) || S.columns.push(c)); S.rows.push(...rows); }
+  saveRecipients(); renderChips(); renderGrid(); renderPicker();
+  toast(`Imported ${rows.length} recipients`);
+};
+
+const fmtSize = n => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(0) + " KB" : (n / 1048576).toFixed(1) + " MB";
+function renderAttachments() {
+  $("#att-list").innerHTML = S.attachments.length ? S.attachments.map(a => `
+    <div class="att-row"><span>📎</span><span class="name" title="${esc(a.path)}">${esc(a.name)}</span>
+    <span class="size">${fmtSize(a.size)}</span><button class="icon-btn" data-delatt="${esc(a.name)}" title="Delete file">${X}</button></div>`).join("")
+    : '<div class="help" style="margin:0">No files yet.</div>';
+  let dl = $("#att-options");
+  if (!dl) { dl = document.createElement("datalist"); dl.id = "att-options"; document.body.append(dl); }
+  dl.innerHTML = S.attachments.map(a => `<option value="${esc(a.path)}">`).join("");
+}
+async function upload(files) {
+  for (const f of files) {
+    if (f.size > 25 * 1048576) { toast(`${f.name} is larger than 25 MB`, true); continue; }
+    try { S.attachments = (await api("/api/upload?name=" + encodeURIComponent(f.name), f, true)).attachments; toast("Uploaded " + f.name); }
+    catch (e) { toast(f.name + ": " + e.message, true); }
+  }
+  renderAttachments();
+  if (!S.columns.includes("attachment")) { S.columns.push("attachment"); S.rows.forEach(r => r.attachment ??= ""); saveRecipients(); renderGrid(); }
+}
+const drop = $("#drop");
+drop.onclick = () => $("#att-file").click();
+$("#att-file").onchange = e => { upload([...e.target.files]); e.target.value = ""; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); upload([...e.dataTransfer.files]); };
+$("#att-list").onclick = async e => {
+  const b = e.target.closest("[data-delatt]"); if (!b) return;
+  const name = b.dataset.delatt;
+  const used = S.rows.filter(r => (r.attachment || "").includes(name)).length;
+  if (!await confirmDlg("Delete file?", `<p>Delete <b>${esc(name)}</b> from the attachments folder?</p>` +
+      (used ? `<p class="help">${used} recipient(s) still reference it and will fail until you change that.</p>` : ""), "Delete", true)) return;
+  try { S.attachments = (await api("/api/delete-attachment", { name })).attachments; renderAttachments(); }
+  catch (er) { toast(er.message, true); }
+};
+
+let checkResult = null, running = false, evCount = 0;
+function canSend() {
+  if (!S.config?.has_password) return 'No password set yet. Add an App Password in <a href="#" data-go="settings">Settings</a>.';
+  if (!S.subject.trim()) return 'Add a subject in <a href="#" data-go="compose">Compose</a> before sending.';
+  return "";
+}
+async function checkAll() {
+  $("#go-text").textContent = "Checking…";
+  $("#send-btn").disabled = true;
+  renderResend();
+  try {
+    await flushSaves();
+    const { items } = await api("/api/preview", { subject: S.subject, body: S.body, rows: S.rows });
+    const problems = [];
+    items.forEach((it, i) => {
+      if (it.error) problems.push([i, it.email || "(no email)", it.error]);
+      else if (!EMAIL_RE.test(it.email)) problems.push([i, it.email, "doesn't look like an email address"]);
+    });
+    const done = items.filter(it => it.already_sent).length;
+    const ready = items.length - done - problems.filter(([i]) => !items[i].already_sent).length;
+    checkResult = { ready, done, problems };
+    $("#st-total").textContent = items.length;
+    $("#st-ready").textContent = ready;
+    $("#st-done").textContent = done;
+    $("#st-bad").textContent = problems.length;
+    $("#problems-card").hidden = !problems.length;
+    $("#prob-count").textContent = problems.length;
+    $("#problems").innerHTML = problems.map(([i, em, msg]) =>
+      `<li><span class="badge err">Row ${i + 1}</span><b>${esc(em)}</b><span style="color:var(--muted)">${esc(msg)}</span></li>`).join("");
+    const block = canSend();
+    if (block) $("#go-text").innerHTML = block;
+    else if (!ready) $("#go-text").textContent = done ? "Everyone has been sent to. Use Resend below to send again." : "Nothing new to send.";
+    else $("#go-text").textContent = `${plural(ready, "email")} will be sent from ${S.config.from_email}, ${S.config.delay}s apart.`;
+    $("#send-btn").textContent = ready ? `Send ${plural(ready, "email")}` : "Send emails";
+    $("#send-btn").disabled = !ready || !!block || running;
+  } catch (e) {
+    $("#go-text").textContent = e.message;
+  }
+}
+async function startSend(extra = {}) {
+  await api("/api/send", { subject: S.subject, body: S.body, columns: S.columns, rows: S.rows, ...extra });
+  evCount = 0;
+  $("#events").innerHTML = "";
+  startPolling();
+}
+$("#send-btn").onclick = async () => {
+  const { ready, problems } = checkResult;
+  const ok = await confirmDlg("Send emails?",
+    `<p>This sends <b>${plural(ready, "real email")}</b> from <b>${esc(S.config.from_email)}</b>.</p>` +
+    (problems.length ? `<p class="help">${problems.length} row(s) with problems will be logged as failed.</p>` : "") +
+    `<p class="help">It can't be undone.</p>`, "Send now");
+  if (!ok) return;
+  try { await startSend(); } catch (e) { toast(e.message, true); }
+};
+async function resend(emails) {
+  const block = canSend();
+  if (block) { toast(block.replace(/<[^>]+>/g, ""), true); return; }
+  if (running) return toast("A send is already running.", true);
+  if (!emails.length) return;
+  const ok = await confirmDlg("Resend?",
+    `<p>Send the current message again to <b>${emails.length === 1 ? esc(emails[0]) : plural(emails.length, "person")}</b> who ${emails.length === 1 ? "has" : "have"} already received it.</p>` +
+    `<p class="help">They will get a second copy. This can't be undone.</p>`, `Resend${emails.length > 1 ? " " + emails.length : ""}`);
+  if (!ok) return;
+  try {
+    show("send");
+    await startSend({ only: emails, resend: true });
+    resendSel.clear();
+    renderResend();
+  } catch (e) { toast(e.message, true); }
+}
+$("#stop-btn").onclick = () => api("/api/stop", {}).then(() => toast("Stopping after the current email…")).catch(e => toast(e.message, true));
+
+function startPolling() {
+  running = true;
+  $("#send-btn").disabled = true;
+  $("#rs-btn").disabled = true;
+  $("#stop-btn").hidden = false;
+  $("#run").hidden = false;
+  $("#events").hidden = false;
+  poll();
+}
+async function poll() {
+  let p;
+  try { p = await api("/api/progress?since=" + evCount); }
+  catch (e) { if ($("#login").hidden) setTimeout(poll, 1500); return; }
+  const ev = $("#events");
+  for (const e of p.events) {
+    const cls = { SENT: "ok", FAILED: "err", SKIP: "mute" }[e.status];
+    const label = e.status === "SKIP" ? "Skipped" : e.status === "SENT" ? (e.detail === "resend" ? "Resent" : "Sent") : "Failed";
+    const detail = e.detail && e.detail !== "resend" ? ` <span style="color:var(--muted)">· ${esc(e.detail)}</span>` : "";
+    ev.insertAdjacentHTML("afterbegin", `<div><span class="n">${e.i}/${p.total}</span><span><span class="badge ${cls}">${label}</span></span><span>${esc(e.email)}${detail}</span></div>`);
+    if (e.status === "SENT") S.sent.add(e.email.toLowerCase());
+  }
+  evCount = p.event_count;
+  const done = p.sent + p.failed + p.skipped;
+  $("#bar").style.width = (p.total ? 100 * done / p.total : 0) + "%";
+  $("#run-text").textContent = `${done} of ${p.total} processed · ${p.sent} sent · ${p.failed} failed · ${p.skipped} skipped`;
+  if (p.running) return setTimeout(poll, 700);
+  running = false;
+  $("#stop-btn").hidden = true;
+  if (p.error) toast(p.error, true);
+  else toast(`Done. ${p.sent} sent, ${p.failed} failed.`);
+  await refreshLog();
+  renderGrid();
+  checkAll();
+}
+
+const resendSel = new Set();
+function sentInfo() {
+  const m = new Map();
+  for (const r of S.log) if (r.status === "SENT") {
+    const k = r.email.toLowerCase(), v = m.get(k) || { count: 0, last: "" };
+    v.count++; v.last = r.timestamp; m.set(k, v);
+  }
+  return m;
+}
+let rsShown = [];
+function renderResend() {
+  const info = sentInfo(), q = $("#rs-search").value.trim().toLowerCase(), seen = new Set();
+  const list = [];
+  for (const r of S.rows) {
+    const k = (r.email || "").trim().toLowerCase();
+    if (!k || !info.has(k) || seen.has(k)) continue;
+    seen.add(k); list.push([r, k]);
+  }
+  resendSel.forEach(k => seen.has(k) || resendSel.delete(k));
+  rsShown = list.filter(([r]) => !q || Object.values(r).some(v => String(v).toLowerCase().includes(q)));
+  const nameCol = S.columns.find(c => /name/i.test(c));
+  $("#rs-count").textContent = list.length;
+  $("#rs-table").innerHTML = rsShown.length
+    ? `<thead><tr><th class="cb"><input type="checkbox" id="rs-all" title="Select all shown"></th><th>Email</th>${nameCol ? `<th>${esc(nameCol)}</th>` : ""}<th>Last sent</th><th>Times</th></tr></thead><tbody>` +
+      rsShown.slice(0, 2000).map(([r, k]) => `<tr><td class="cb"><input type="checkbox" data-rs="${esc(k)}" ${resendSel.has(k) ? "checked" : ""}></td>
+        <td>${esc(r.email)}</td>${nameCol ? `<td>${esc(r[nameCol])}</td>` : ""}<td style="white-space:nowrap">${esc(fmtTime(info.get(k).last))}</td><td>${info.get(k).count}</td></tr>`).join("") + "</tbody>"
+    : `<tbody><tr><td class="empty">${list.length ? "No matches." : "Nobody on the current list has been sent to yet."}</td></tr></tbody>`;
+  updateResendBtn();
+}
+function updateResendBtn() {
+  const all = $("#rs-all");
+  if (all) {
+    const n = rsShown.filter(([, k]) => resendSel.has(k)).length;
+    all.checked = n > 0 && n === rsShown.length;
+    all.indeterminate = n > 0 && n < rsShown.length;
+  }
+  $("#rs-btn").textContent = resendSel.size ? `Resend to ${resendSel.size}` : "Resend";
+  $("#rs-btn").disabled = !resendSel.size || running;
+}
+$("#rs-search").oninput = renderResend;
+$("#rs-table").addEventListener("change", e => {
+  const t = e.target;
+  if (t.id === "rs-all") {
+    rsShown.forEach(([, k]) => t.checked ? resendSel.add(k) : resendSel.delete(k));
+    $$("#rs-table [data-rs]").forEach(c => c.checked = t.checked);
+  } else if (t.dataset.rs) {
+    t.checked ? resendSel.add(t.dataset.rs) : resendSel.delete(t.dataset.rs);
+  }
+  updateResendBtn();
+});
+$("#rs-btn").onclick = () => resend([...resendSel]);
+
+async function refreshLog() {
+  S.log = (await api("/api/log")).log;
+  S.sent = new Set(S.log.filter(r => r.status === "SENT").map(r => r.email.toLowerCase()));
+  renderLog();
+  renderResend();
+}
+function renderLog() {
+  const f = $("#log-filter").value;
+  const rows = S.log.filter(r => !f || r.status === f);
+  $("#log").innerHTML = rows.length
+    ? `<thead><tr><th>Time</th><th>Email</th><th>Status</th><th>Detail</th></tr></thead><tbody>` +
+      rows.slice(-3000).reverse().map(r => `<tr><td style="white-space:nowrap">${esc(fmtTime(r.timestamp))}</td><td>${esc(r.email)}</td>
+        <td><span class="badge ${r.status === "SENT" ? "ok" : "err"}">${r.status === "SENT" ? (r.detail === "resend" ? "Resent" : "Sent") : "Failed"}</span></td>
+        <td class="detail">${r.detail === "resend" ? "" : esc(r.detail)}</td></tr>`).join("") + "</tbody>"
+    : `<tbody><tr><td class="empty">${S.log.length ? "Nothing matches this filter." : "Nothing sent yet."}</td></tr></tbody>`;
+  $("#clear-log").disabled = !S.log.length;
+}
+$("#log-filter").onchange = renderLog;
+$("#clear-log").onclick = async () => {
+  if (!await confirmDlg("Clear history?", "<p>Deletes <code>sent_log.csv</code>. Everyone on the list will be treated as not yet sent, so the next send goes to them again.</p><p class='help'>A backup is saved first.</p>" + pwField(), "Clear history", true)) return;
+  try { await api("/api/clear-log", { password: dlgPw() }); await refreshLog(); renderGrid(); checkAll(); toast("History cleared (backup saved)"); }
+  catch (e) { toast(e.message, true); }
+};
+
+const CFG = ["from_name", "from_email", "host", "port", "username", "delay"];
+function renderConfig(err) {
+  $("#cfg-error").innerHTML = err ? `<div class="notice err" style="margin:0 0 14px">${esc(err)}</div>` : "";
+  const c = S.config || {};
+  CFG.forEach(k => $("#c-" + k).value = c[k] ?? "");
+  $("#c-password").value = "";
+  $("#c-password").placeholder = c.has_password ? "•••••••••••••••• (saved)" : "Paste your app password";
+  $("#pw-help").textContent = c.has_password ? "Leave blank to keep the saved password." : "";
+}
+$("#cfg").onsubmit = async e => {
+  e.preventDefault();
+  const d = Object.fromEntries(CFG.map(k => [k, $("#c-" + k).value]));
+  d.password = $("#c-password").value;
+  try { S.config = (await api("/api/config", d)).config; renderConfig(); toast("Settings saved"); preview(); loadSecurity(); }
+  catch (er) { toast(er.message, true); }
+};
+$("#test-btn").onclick = async () => {
+  const b = $("#test-btn");
+  b.disabled = true; b.textContent = "Connecting…";
+  try { toast((await api("/api/test-connection", {})).message); }
+  catch (e) { toast(e.message, true); }
+  finally { b.disabled = false; b.textContent = "Test connection"; }
+};
+
+let SEC = null;
+async function loadSecurity() {
+  try { SEC = await api("/api/security"); renderSecurity(); }
+  catch (e) { if ($("#login").hidden) toast(e.message, true); }
+}
+function renderSecurity() {
+  S.lock = SEC.lock;
+  $("#logout").hidden = !S.lock;
+  $("#lock-badge").className = "badge " + (SEC.lock ? "ok" : "warn");
+  $("#lock-badge").textContent = SEC.lock ? "On" : "Off";
+  $("#lock-form").innerHTML = (SEC.lock
+    ? `<p class="help" style="margin:0 0 10px">The dashboard asks for a password when opened and after ${SEC.session_minutes} idle minutes.</p>
+       <label class="f" for="lk-cur">Current password</label><input type="password" id="lk-cur" autocomplete="current-password">`
+    : `<p class="help" style="margin:0 0 10px">Anyone using this computer can open the dashboard. Set a password to lock it.</p>`) +
+    `<div class="form" style="margin-top:10px">
+       <div><label class="f" for="lk-new">${SEC.lock ? "New password" : "Password"}</label><input type="password" id="lk-new" autocomplete="new-password" placeholder="At least 8 characters"></div>
+       <div><label class="f" for="lk-new2">Repeat</label><input type="password" id="lk-new2" autocomplete="new-password"></div>
+     </div>
+     <div class="row" style="margin-top:10px">
+       <button class="btn primary sm" id="lk-set">${SEC.lock ? "Change password" : "Turn on lock"}</button>
+       ${SEC.lock ? '<button class="btn danger sm" id="lk-off">Remove lock</button>' : ""}
+     </div>`;
+  $("#sess-min").value = SEC.session_minutes;
+
+  const st = { encrypted: ["ok", "Encrypted"], plaintext: ["err", "Plain text"], environment: ["ok", "Environment variable"], none: ["mute", "Not set"] }[SEC.smtp_storage];
+  $("#smtp-badge").className = "badge " + st[0];
+  $("#smtp-badge").textContent = st[1];
+  $("#smtp-store").innerHTML = {
+    encrypted: `<p class="help" style="margin:0">Stored in <code>config.ini</code> encrypted with Windows DPAPI. Only your Windows account on this computer can decrypt it.</p>`,
+    plaintext: `<p class="help" style="margin:0 0 8px">The app password is readable by anyone who opens <code>config.ini</code>.</p>` +
+      (SEC.dpapi ? `<button class="btn primary sm" id="enc-now">Encrypt now</button>` : `<p class="help">Set the <code>MAIL_PASSWORD</code> environment variable instead and clear it from the file.</p>`),
+    environment: `<p class="help" style="margin:0">Read from the <code>MAIL_PASSWORD</code> environment variable; not stored on disk by Mailer.</p>`,
+    none: `<p class="help" style="margin:0">No app password yet. Add one under Mail account; it will be encrypted automatically.</p>`,
+  }[SEC.smtp_storage];
+
+  $("#bk-count").textContent = SEC.backups.length;
+  $("#backups").innerHTML = SEC.backups.length ? SEC.backups.map(b => {
+    const m = b.name.match(/^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)-?(.*)$/);
+    const when = m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : b.name;
+    const why = m ? m[7].replace(/-\d+$/, "").replace(/-/g, " ") : "";
+    const what = [`${plural(b.recipients, "recipient")}`, b.has_template && "message", b.has_history && "history", b.attachments && plural(b.attachments, "file")].filter(Boolean).join(" · ");
+    return `<div class="bk"><span class="when">${esc(when)}</span><span class="badge mute">${esc(why)}</span><span class="what">${esc(what)}</span>
+      <button class="btn sm" data-restore="${esc(b.name)}">Restore</button><button class="icon-btn" data-delbk="${esc(b.name)}" title="Delete backup">${X}</button></div>`;
+  }).join("") : '<p class="help">No backups yet. They are created automatically when you reset or clear history.</p>';
+
+  const ev = { login: "ok", login_failed: "err", reauth_failed: "err", dashboard_reset: "warn", history_cleared: "warn", backup_restored: "warn", lock_password_removed: "warn", send_started: "info", send_finished: "info" };
+  $("#audit").innerHTML = SEC.audit.length
+    ? `<thead><tr><th>Time</th><th>Event</th><th>Detail</th></tr></thead><tbody>` + SEC.audit.map(a =>
+      `<tr><td style="white-space:nowrap">${esc(fmtTime(a.timestamp))}</td><td><span class="badge ${ev[a.event] || "mute"}">${esc(a.event.replace(/_/g, " "))}</span></td><td class="detail">${esc(a.detail)}</td></tr>`).join("") + "</tbody>"
+    : '<tbody><tr><td class="empty">No events yet.</td></tr></tbody>';
+}
+async function securityAction(data, msg) {
+  try { SEC = await api("/api/security", data); renderSecurity(); toast(msg); }
+  catch (e) { toast(e.message, true); }
+}
+$("#lock-form").addEventListener("click", async e => {
+  if (e.target.id === "lk-set") {
+    const n1 = $("#lk-new").value, n2 = $("#lk-new2").value;
+    if (n1.length < 8) return toast("Use at least 8 characters.", true);
+    if (n1 !== n2) return toast("The two passwords don't match.", true);
+    await securityAction({ action: "set_lock", current: $("#lk-cur")?.value || "", new: n1 }, SEC.lock ? "Password changed" : "Dashboard lock is on");
+  }
+  if (e.target.id === "lk-off") {
+    if (!await confirmDlg("Remove lock?", "<p>Anyone using this computer will be able to open the dashboard without a password.</p>", "Remove lock", true)) return;
+    await securityAction({ action: "remove_lock", current: $("#lk-cur")?.value || "" }, "Dashboard lock removed");
+  }
+});
+$("#sess-save").onclick = () => securityAction({ action: "session_minutes", minutes: $("#sess-min").value }, "Session timeout saved");
+$("#smtp-store").addEventListener("click", e => {
+  if (e.target.id === "enc-now") securityAction({ action: "encrypt_smtp" }, "App password encrypted");
+});
+
+const PART_NAMES = { recipients: "recipient list", template: "subject and message", history: "send history", attachments: "attachment files" };
+$("#reset-btn").onclick = async () => {
+  const parts = $$("#reset-parts input:checked").map(i => i.value);
+  if (!parts.length) return toast("Choose at least one thing to reset.", true);
+  if (running) return toast("Wait for the current send to finish.", true);
+  const backup = $("#reset-backup").checked;
+  const ok = await confirmDlg("Reset dashboard?",
+    `<p>This clears the <b>${parts.map(p => PART_NAMES[p]).join(", ")}</b>.</p>
+     <p class="help">Kept: sender name, SMTP login, app password and security settings.</p>` +
+    (backup ? `<p class="help">A backup is saved first and can be restored from Settings.</p>`
+            : `<p class="help" style="color:var(--err)">No backup will be made. This can't be undone.</p>`) +
+    `<label class="f" for="d-confirm">Type <b>RESET</b> to confirm</label><input type="text" id="d-confirm" autocomplete="off">` + pwField(),
+    "Reset", true, { require: "RESET" });
+  if (!ok) return;
+  try {
+    for (const k in timers) clearTimeout(timers[k]);
+    const r = await api("/api/reset", { parts, backup, confirm: $("#d-confirm").value, password: dlgPw() });
+    resendSel.clear();
+    await loadState();
+    loadSecurity();
+    toast(r.backup ? "Dashboard reset. Backup saved." : "Dashboard reset.");
+  } catch (e) { toast(e.message, true); }
+};
+$("#backups").addEventListener("click", async e => {
+  const rs = e.target.closest("[data-restore]"), del = e.target.closest("[data-delbk]");
+  if (rs) {
+    if (running) return toast("Wait for the current send to finish.", true);
+    if (!await confirmDlg("Restore backup?", `<p>Replace the current list, message, history and attachments with the ones saved in <b>${esc(rs.dataset.restore)}</b>.</p><p class="help">The current state is backed up first, so you can undo this.</p>` + pwField(), "Restore")) return;
+    try {
+      for (const k in timers) clearTimeout(timers[k]);
+      await api("/api/restore", { name: rs.dataset.restore, password: dlgPw() });
+      await loadState(); loadSecurity(); toast("Backup restored");
+    } catch (er) { toast(er.message, true); }
+  }
+  if (del) {
+    if (!await confirmDlg("Delete backup?", `<p>Permanently delete <b>${esc(del.dataset.delbk)}</b>?</p>` + pwField(), "Delete", true)) return;
+    try { await api("/api/delete-backup", { name: del.dataset.delbk, password: dlgPw() }); loadSecurity(); toast("Backup deleted"); }
+    catch (er) { toast(er.message, true); }
+  }
+});
+
+async function loadAbout() {
+  try {
+    const a = await api("/api/about");
+    $("#g-version").textContent = "v" + a.version;
+    const files = a.files.map(f => `<tr><td><code>${esc(f.name)}</code></td><td>${f.exists ? (f.size != null ? fmtSize(f.size) : "") : '<span class="badge mute">not created yet</span>'}</td><td>${esc(fmtTime(f.modified || ""))}</td></tr>`).join("");
+    $("#about").innerHTML = `
+      <div class="kv" style="margin-bottom:14px">
+        <span class="k">Version</span><span>${esc(a.app)} ${esc(a.version)}</span>
+        <span class="k">Python</span><span>${esc(a.implementation)} ${esc(a.python)}</span>
+        <span class="k">System</span><span>${esc(a.os)} (${esc(a.machine)})</span>
+        <span class="k">Address</span><span><code>${esc(a.url)}</code> (this computer only)</span>
+        <span class="k">Running since</span><span>${esc(fmtTime(a.started))}</span>
+        <span class="k">Folder</span><span><code>${esc(a.folder)}</code></span>
+        <span class="k">Data</span><span>${plural(a.counts.recipients, "recipient")} · ${plural(a.counts.columns, "column")} · ${a.counts.sent} sent · ${plural(a.counts.log, "log entry").replace("entrys", "entries")} · ${plural(a.counts.attachments, "attachment")} · ${plural(a.counts.backups, "backup")}</span>
+      </div>
+      <table><thead><tr><th>File</th><th>Size</th><th>Modified</th></tr></thead><tbody>${files}</tbody></table>`;
+  } catch (e) { $("#about").innerHTML = `<div class="notice err" style="margin:0">${esc(e.message)}</div>`; }
+}
+$("#about-refresh").onclick = loadAbout;
+$("#toc").onclick = e => {
+  const a = e.target.closest("a"); if (!a) return;
+  e.preventDefault();
+  $(a.getAttribute("href"))?.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+async function loadState() {
+  const st = await api("/api/state");
+  Object.assign(S, { subject: st.subject, body: st.body, columns: st.columns, rows: st.rows, config: st.config,
+    attachments: st.attachments, log: st.log, sent: new Set(st.sent) });
+  $("#subject").value = S.subject;
+  $("#body").value = S.body;
+  $("#search").value = "";
+  renderChips(); renderGrid(); renderAttachments(); renderLog(); renderResend(); renderConfig(st.config_error); renderPicker(); preview();
+  setSave("", "All changes saved");
+  return st;
+}
+async function boot() {
+  $("#app").hidden = false;
+  $("#logout").hidden = !S.lock;
+  const st = await loadState();
+  let tab = "compose";
+  try { tab = localStorage.getItem("mailer-tab") || tab; } catch {}
+  if (!$("#view-" + tab)) tab = "compose";
+  show(tab);
+  if (st.job.running && !running) { evCount = 0; show("send"); startPolling(); }
+}
+(async () => {
+  try {
+    const s = await api("/api/session");
+    if (!s.authenticated) return showLogin();
+    S.csrf = s.csrf; S.lock = s.lock;
+    await boot();
+  } catch (e) {
+    $("#app").hidden = false;
+    toast("Could not load: " + e.message, true);
+  }
+})();
+</script>
+</body>
+</html>
