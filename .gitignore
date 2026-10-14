@@ -2,11 +2,21 @@
 config.ini
 recipients.csv
 template.txt
+template.html
 sent_log.csv
 audit_log.csv
 backups/
+campaigns/
+saved_templates/
 attachments/*
 !attachments/.gitkeep
 
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# Packaging output
+build/
+.build-venv/
+dist/
+Mailer.spec

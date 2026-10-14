@@ -91,6 +91,7 @@ textarea { resize: vertical; min-height: 340px; line-height: 1.6; }
 .badge.info { background: var(--accent-soft); color: var(--accent); }
 .badge.mute { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
 
+.compose > .card + .card { margin-top: 0; }
 .compose { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
 .fields .hint { color: var(--muted); font-size: 12.5px; margin-right: 2px; }
@@ -109,6 +110,21 @@ textarea { resize: vertical; min-height: 340px; line-height: 1.6; }
 .notice.err { background: var(--err-soft); color: var(--err); }
 .notice.ok { background: var(--ok-soft); color: var(--ok); }
 .notice.info { background: var(--accent-soft); color: var(--accent); }
+.html-frame { width: 100%; min-height: 360px; border: 0; border-top: 1px solid var(--border); background: #fff; display: block; }
+.alt-text { margin: 0 18px 16px; }
+.alt-text summary { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.html-box { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; }
+.html-box summary { padding: 9px 0; font-size: 13px; }
+.html-box textarea { min-height: 220px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; margin-bottom: 12px; }
+.lib { margin-left: auto; display: flex; gap: 6px; align-items: center; font-weight: 400; }
+.lib select { width: auto; max-width: 200px; padding: 4px 8px; }
+.banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; padding: 12px 16px; border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); }
+.banner p { margin: 0; flex: 1; min-width: 220px; }
+.health { list-style: none; margin: 0; padding: 0; }
+.health li { padding: 7px 0; border-bottom: 1px solid var(--border); display: flex; gap: 10px; font-size: 13px; align-items: baseline; }
+.health li:last-child { border-bottom: 0; }
+.health b { min-width: 120px; }
+.health span.d { color: var(--muted); }
 .tpl-foot { display: flex; gap: 8px; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .tpl-foot .help { margin: 0; flex: 1; min-width: 180px; }
 
@@ -285,15 +301,26 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
 <main>
   <section class="view active" id="view-compose">
     <h2>Compose</h2>
-    <p class="sub">Write once. <code>{column}</code> placeholders are filled in from each recipient's row.</p>
+    <p class="sub">Write once. <code>{{column}}</code> (or <code>{column}</code>) placeholders are filled in from each recipient's row.</p>
     <div class="compose">
       <div class="card">
-        <div class="card-h">Template</div>
+        <div class="card-h">Template
+          <div class="lib">
+            <select id="tpl-pick" title="Saved templates"></select>
+            <button class="btn sm" id="tpl-load">Load</button>
+            <button class="btn sm" id="tpl-save">Save as…</button>
+            <button class="icon-btn" id="tpl-del" title="Delete saved template"></button>
+          </div>
+        </div>
         <div class="card-b">
           <label class="f" for="subject">Subject</label>
-          <input type="text" id="subject" placeholder="Hello {name}">
-          <label class="f" for="body" style="margin-top:14px">Message</label>
-          <textarea id="body" placeholder="Hi {name}, ..."></textarea>
+          <input type="text" id="subject" placeholder="Hello {{name}}">
+          <label class="f" for="body" style="margin-top:14px">Message (plain text)</label>
+          <textarea id="body" placeholder="Hi {{name}}, ..."></textarea>
+          <details class="html-box" id="html-box">
+            <summary>HTML version <span class="help" style="font-weight:400">(optional; sent alongside the plain text)</span></summary>
+            <textarea id="html" placeholder="<p>Hi <b>{{name}}</b>, ...</p>" spellcheck="false"></textarea>
+          </details>
           <div class="fields" id="field-chips"></div>
           <div class="tpl-foot">
             <p class="help">Send the preview on the right to your own address to check how it looks in a real inbox.</p>
@@ -346,6 +373,7 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
   <section class="view" id="view-send">
     <h2>Send</h2>
     <p class="sub">Check everything looks right, then send. Recipients already sent to are skipped, unless you choose to resend below.</p>
+    <div class="banner" id="interrupted" hidden></div>
     <div class="stats">
       <div class="card stat"><div class="v" id="st-total">0</div><div class="l">Recipients</div></div>
       <div class="card stat ok"><div class="v" id="st-ready">0</div><div class="l">Ready to send</div></div>
@@ -380,6 +408,15 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
       <div class="table-wrap" style="max-height:320px"><table class="log" id="rs-table"></table></div>
     </div>
     <div class="card">
+      <div class="card-h">Campaigns <span class="badge mute" id="cp-count">0</span><span class="help" style="margin:0;font-weight:400">every send run, with its own copy of the list and message</span>
+        <div class="tools">
+          <select id="cp-filter"><option value="">All</option><option value="completed">Completed</option><option value="stopped">Stopped</option><option value="interrupted">Interrupted</option><option value="failed">Failed</option><option value="running">Running</option></select>
+          <input type="search" id="cp-search" placeholder="Search subject">
+        </div>
+      </div>
+      <div class="table-wrap" style="max-height:320px"><table class="log" id="campaigns"></table></div>
+    </div>
+    <div class="card">
       <div class="card-h">History <span class="help" style="margin:0;font-weight:400">from sent_log.csv</span>
         <div class="tools">
           <select id="log-filter"><option value="">All</option><option value="SENT">Sent</option><option value="FAILED">Failed</option></select>
@@ -404,6 +441,7 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
               <div class="section-t">Sender</div>
               <div><label class="f" for="c-from_name">Display name</label><input type="text" id="c-from_name"></div>
               <div><label class="f" for="c-from_email">From address</label><input type="email" id="c-from_email"></div>
+              <div class="full"><label class="f" for="c-reply_to">Reply-to <span style="font-weight:400">(optional)</span></label><input type="email" id="c-reply_to" placeholder="Replies go to the From address if empty"></div>
 
               <div class="section-t">Mail server (SMTP)</div>
               <div><label class="f" for="c-host">Server</label><input type="text" id="c-host" placeholder="smtp.gmail.com">
@@ -419,7 +457,12 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
               <div class="section-t">Sending</div>
               <div><label class="f" for="c-delay">Seconds between emails</label><input type="number" id="c-delay" min="0" step="0.5">
                 <div class="help">A short pause helps avoid being flagged as spam.</div></div>
-              <div></div>
+              <div><label class="f" for="c-daily_limit">Daily limit</label><input type="number" id="c-daily_limit" min="0" step="1">
+                <div class="help">Stops after this many sends in 24 hours. Gmail ≈ 500, Google Workspace ≈ 2000. 0 = no limit.</div></div>
+              <div><label class="f" for="c-max_retries">Retries for temporary errors</label><input type="number" id="c-max_retries" min="0" max="10" step="1">
+                <div class="help">Bad addresses are never retried.</div></div>
+              <div><label class="f" for="c-retry_delay">First retry after (seconds)</label><input type="number" id="c-retry_delay" min="0" step="1">
+                <div class="help">Doubles on each further try.</div></div>
 
               <div class="full row" style="margin-top:6px">
                 <button class="btn primary" type="submit">Save settings</button>
@@ -435,7 +478,7 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
             <p style="margin:0 0 10px">Start fresh for a new campaign. Choose what to clear:</p>
             <div id="reset-parts">
               <label class="check"><input type="checkbox" value="recipients" checked> Recipient list <span class="help" style="margin:0">(recipients.csv)</span></label>
-              <label class="check"><input type="checkbox" value="template" checked> Subject and message <span class="help" style="margin:0">(template.txt)</span></label>
+              <label class="check"><input type="checkbox" value="template" checked> Subject and message <span class="help" style="margin:0">(template.txt, template.html)</span></label>
               <label class="check"><input type="checkbox" value="history" checked> Send history <span class="help" style="margin:0">(sent_log.csv)</span></label>
               <label class="check"><input type="checkbox" value="attachments" checked> Attachment files <span class="help" style="margin:0">(attachments/)</span></label>
             </div>
@@ -447,6 +490,11 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
       </div>
 
       <div class="stack">
+        <div class="card">
+          <div class="card-h">Health check <button class="btn sm" id="health-run" style="margin-left:auto">Run check</button></div>
+          <div class="card-b" style="padding-top:6px;padding-bottom:6px"><ul class="health" id="health"></ul></div>
+        </div>
+
         <div class="card">
           <div class="card-h">Security</div>
           <div class="card-b">
@@ -472,6 +520,7 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
                 <li>TLS certificate verification for the mail server; the app password is never sent back to the browser.</li>
                 <li>Attachments limited to the <code>attachments/</code> folder; dangerous file types and oversize uploads blocked.</li>
                 <li>Wrong-password lockout with growing delays; destructive actions ask for the password again.</li>
+                <li>HTML previews render in a sandbox where scripts can't run; CSV exports are protected against formula injection.</li>
               </ul>
             </div>
           </div>
@@ -518,7 +567,8 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
           <div class="card-b" style="border-top:1px solid var(--border)">
             <ul style="margin:0">
               <li><b>Personalised:</b> any column in your list (name, branch, slot…) can be dropped into the subject or message.</li>
-              <li><b>Safe to re-run:</b> everyone who received the email is recorded, so an interrupted send just picks up where it stopped.</li>
+              <li><b>Safe to re-run:</b> everyone who received the email is recorded, so an interrupted send just picks up where it stopped. Each run is kept as a campaign you can resume.</li>
+              <li><b>Resilient:</b> temporary server errors are retried with a growing pause; bad addresses aren't; the daily sending limit is respected.</li>
               <li><b>Private:</b> no cloud service, no account, no installs. Your list and password never leave your machine except to your own mail server.</li>
             </ul>
           </div>
@@ -533,8 +583,8 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
               <li><div><b>Create a Gmail App Password.</b> Turn on 2-Step Verification, then create one at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">myaccount.google.com/apppasswords</a>.</div></li>
               <li><div><b>Settings → Mail account.</b> Enter your name, address, login and the app password. Click <b>Test connection</b>.</div></li>
               <li><div><b>Settings → Security.</b> Set a dashboard password and click <b>Encrypt now</b> for the app password (recommended).</div></li>
-              <li><div><b>Recipients.</b> Import a CSV (it must have an <code>email</code> column) or type rows in. Click <b>Remove duplicates</b>.</div></li>
-              <li><div><b>Compose.</b> Write the subject and message, insert <code>{name}</code>-style fields, and step through the preview. Click <b>Send test to me</b>.</div></li>
+              <li><div><b>Recipients.</b> Import a CSV (comma, semicolon or tab separated; the email column is found automatically, e.g. <code>Email</code>, <code>E-mail</code>, <code>Email Address</code>) or type rows in. Click <b>Remove duplicates</b>.</div></li>
+              <li><div><b>Compose.</b> Write the subject and message, insert <code>{{name}}</code>-style fields, optionally add an HTML version, and step through the preview. Click <b>Send test to me</b>.</div></li>
               <li><div><b>Send.</b> Fix anything listed under Problems, then click <b>Send</b> and watch the progress.</div></li>
             </ol>
           </div>
@@ -546,10 +596,10 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
             <table>
               <thead><tr><th>Tab</th><th>What it does</th></tr></thead>
               <tbody>
-                <tr><td><b>Compose</b></td><td>Edit the subject and message, insert fields, preview the exact email for each person, send yourself a test.</td></tr>
-                <tr><td><b>Recipients</b></td><td>Spreadsheet-style editor: add/rename/delete columns, import and export CSV, search, remove duplicates, upload attachments, resend to one person.</td></tr>
-                <tr><td><b>Send</b></td><td>Pre-flight check (ready / already sent / problems), live progress with Stop, resend to chosen people, filterable and exportable history.</td></tr>
-                <tr><td><b>Settings</b></td><td>Mail account, dashboard lock, session timeout, password encryption, reset, backups and the audit log.</td></tr>
+                <tr><td><b>Compose</b></td><td>Edit the subject, plain-text and optional HTML message, insert fields, preview the exact email for each person, send yourself a test, and save/load named templates.</td></tr>
+                <tr><td><b>Recipients</b></td><td>Spreadsheet-style editor: add/rename/delete columns, import (with a valid / invalid / duplicate report) and export CSV, search, remove duplicates, upload attachments, resend to one person.</td></tr>
+                <tr><td><b>Send</b></td><td>Pre-flight check (ready / already sent / problems / daily limit), live progress with Stop, resend to chosen people, campaign history with resume and per-campaign export, filterable and exportable log.</td></tr>
+                <tr><td><b>Settings</b></td><td>Mail account, sending limits and retries, health check, dashboard lock, session timeout, password encryption, reset, backups and the audit log.</td></tr>
                 <tr><td><b>Guide</b></td><td>This page, plus live system information.</td></tr>
               </tbody>
             </table>
@@ -560,10 +610,12 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 1
         <section class="card" id="g-templates">
           <div class="card-h">Placeholders &amp; attachments</div>
           <div class="card-b">
-            <p>Write <code>{column}</code> anywhere in the subject or message. With a list like this:</p>
+            <p>Write <code>{{column}}</code> anywhere in the subject or message (the older <code>{column}</code> form works too). With a list like this:</p>
             <pre><code>email,name,slot
 asha@example.com,Asha,10:00 AM</code></pre>
-            <p><code>Hi {name}, your slot is {slot}.</code> becomes <code>Hi Asha, your slot is 10:00 AM.</code> Unknown fields are highlighted in the preview and left as-is.</p>
+            <p><code>Hi {{name}}, your slot is {{slot}}.</code> becomes <code>Hi Asha, your slot is 10:00 AM.</code> Names are matched ignoring upper/lower case, and columns with spaces work too: <code>{{First Name}}</code>. Unknown fields are highlighted in the preview and left as-is.</p>
+            <p><b>HTML version:</b> open <i>HTML version</i> under the message to add a formatted email. Values from the list are HTML-escaped automatically. Mail apps that can't show HTML fall back to the plain-text message. The preview runs in a sandbox, so scripts don't run and remote images aren't loaded there.</p>
+            <p><b>Saved templates:</b> use <i>Save as…</i> in the Template card to keep a message for later, and <i>Load</i> to bring it back.</p>
             <p>To attach files, upload them on the Recipients tab and choose them in each person's <code>attachment</code> column. Several files: <code>brochure.pdf;map.png</code>. Only files inside <code>attachments/</code> can be sent.</p>
           </div>
         </section>
@@ -577,6 +629,7 @@ asha@example.com,Asha,10:00 AM</code></pre>
               <li><b>Several or all:</b> on the Send tab, tick people under <b>Resend to members already sent</b> (or tick the header box for everyone), then click <b>Resend</b>.</li>
             </ul>
             <p>Resends are recorded in the history with the note <i>resend</i>. Failed sends are never marked as sent, so a normal Send retries them.</p>
+            <p><b>Resuming a campaign:</b> every send run is saved under <b>Send → Campaigns</b> with a copy of its list and message. If a run was stopped, hit the daily limit, or the computer shut down mid-send, click <b>Resume</b>: it continues with that saved copy and skips everyone already sent, without touching your current list or message.</p>
           </div>
         </section>
 
@@ -643,6 +696,9 @@ asha@example.com,Asha,10:00 AM</code></pre>
                 <tr><td><code>secure_store.py</code></td><td>Windows DPAPI encryption for the app password</td></tr>
                 <tr><td><code>recipients.csv</code></td><td>The list; must have an <code>email</code> column</td></tr>
                 <tr><td><code>template.txt</code></td><td>First line <code>Subject: …</code>, then the message</td></tr>
+                <tr><td><code>template.html</code></td><td>Optional HTML version of the message</td></tr>
+                <tr><td><code>saved_templates/</code></td><td>Named templates (one JSON file each)</td></tr>
+                <tr><td><code>campaigns/</code></td><td><code>index.csv</code> of every send run, plus a copy of each run's list and message (used by Resume)</td></tr>
                 <tr><td><code>config.ini</code></td><td>Mail account, delay and security settings</td></tr>
                 <tr><td><code>attachments/</code></td><td>Files that can be attached</td></tr>
                 <tr><td><code>sent_log.csv</code></td><td>Every SENT / FAILED result (decides who is skipped)</td></tr>
@@ -659,9 +715,13 @@ asha@example.com,Asha,10:00 AM</code></pre>
 <pre><code>python app.py                      # dashboard on http://127.0.0.1:8765
 python app.py --port 9000 --no-browser
 
-python send_mails.py               # dry run: print every email, send nothing
-python send_mails.py --send        # send to everyone not yet sent
-python send_mails.py --send --resend   # send to everyone, including already sent</code></pre>
+python send_mails.py                     # dry run: print every email, send nothing
+python send_mails.py --check             # health check
+python send_mails.py --send              # send to everyone not yet sent (asks to confirm)
+python send_mails.py --send --yes --limit 100   # no prompt, at most 100 this run
+python send_mails.py --send --no-resume  # send to everyone, including already sent
+python send_mails.py --csv list.csv --email-column "Work Email"
+python send_mails.py --send --resume 20261014-153000   # continue a saved campaign</code></pre>
             <p>To keep the app password out of files entirely, set it for the session instead: <code>$env:MAIL_PASSWORD = "abcdefghijklmnop"</code></p>
           </div>
         </section>
@@ -670,7 +730,9 @@ python send_mails.py --send --resend   # send to everyone, including already sen
           <div class="card-h">Troubleshooting</div>
           <div class="card-b">
             <details><summary>“Login failed” / “Username and Password not accepted”</summary><p>Gmail needs a 16-character App Password, not your normal password. 2-Step Verification must be on. Paste it in Settings and click Test connection.</p></details>
-            <details><summary>Many “Connection unexpectedly closed” or “please run connect() first” errors</summary><p>The server dropped the connection. Mailer now reconnects automatically and retries. If it keeps happening you have probably hit the daily limit (about 500 a day for personal Gmail, 2,000 for Google Workspace); wait 24 hours, then click Send again. Failed people are retried, sent people are skipped.</p></details>
+            <details><summary>Many “Connection unexpectedly closed” or “please run connect() first” errors</summary><p>The server dropped the connection. Mailer reconnects automatically and retries with a growing pause (Settings → Retries). If it keeps happening you have probably hit the daily limit (about 500 a day for personal Gmail, 2,000 for Google Workspace); Mailer stops the campaign when the server reports that. Wait 24 hours, then click Resume on the campaign. Sent people are skipped.</p></details>
+            <details><summary>“Daily limit reached”</summary><p>Mailer counts sends in the last 24 hours against <b>Settings → Daily limit</b> and stops before going over. Set it to your account's real limit (500 for Gmail, 2,000 for Google Workspace), or 0 to turn the check off.</p></details>
+            <details><summary>My CSV uses semicolons or a column called “E-mail”</summary><p>Both are detected automatically on import. If the email column can't be found, rename it to <code>email</code>, or on the command line use <code>--email-column "Your Column"</code>.</p></details>
             <details><summary>Emails go to spam</summary><p>Increase the delay between emails, keep links few, avoid all-caps subjects, send yourself a test first, and send from an address recipients recognise.</p></details>
             <details><summary>“attachment not found” or “must be in the attachments folder”</summary><p>Upload the file on the Recipients tab and use the name shown there (for example <code>attachments/brochure.pdf</code>).</p></details>
             <details><summary>I forgot the dashboard password</summary><p>Stop the server, open <code>config.ini</code>, clear the value after <code>dashboard_password =</code>, then start again. Your mail settings are not affected.</p></details>
@@ -701,8 +763,9 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const EMAIL_RE = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
-const S = { subject: "", body: "", columns: [], rows: [], config: null, attachments: [], log: [], sent: new Set(),
-  pick: 0, csrf: "", lock: false, booted: false };
+const S = { subject: "", body: "", html: "", columns: [], rows: [], config: null, attachments: [], log: [], sent: new Set(),
+  templates: [], campaigns: [], pick: 0, csrf: "", lock: false, booted: false };
+const tpl = () => ({ subject: S.subject, body: S.body, html: S.html });
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const fmtTime = t => String(t || "").replace("T", " ");
 
@@ -796,11 +859,11 @@ function autosave(key, fn, wait = 600) {
     catch (e) { pending--; setSave("error", "Not saved"); toast(e.message, true); }
   }, wait);
 }
-const saveTemplate = () => autosave("tpl", () => api("/api/template", { subject: S.subject, body: S.body }));
+const saveTemplate = () => autosave("tpl", () => api("/api/template", tpl()));
 const saveRecipients = () => autosave("csv", () => api("/api/recipients", { columns: S.columns, rows: S.rows }));
 async function flushSaves() {
   for (const k in timers) clearTimeout(timers[k]);
-  await api("/api/template", { subject: S.subject, body: S.body });
+  await api("/api/template", tpl());
   await api("/api/recipients", { columns: S.columns, rows: S.rows });
   setSave("", "All changes saved");
 }
@@ -808,9 +871,9 @@ async function flushSaves() {
 function show(tab) {
   $$("header nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + tab));
-  if (tab === "send") checkAll();
+  if (tab === "send") { checkAll(); loadCampaigns(); }
   if (tab === "compose") { renderPicker(); preview(); }
-  if (tab === "settings") loadSecurity();
+  if (tab === "settings") { loadSecurity(); loadHealth(); }
   if (tab === "guide") loadAbout();
   try { localStorage.setItem("mailer-tab", tab); } catch {}
 }
@@ -820,15 +883,16 @@ document.addEventListener("click", e => {
   if (g) { e.preventDefault(); show(g.dataset.go); }
 });
 
+const token = c => `{{${c}}}`;
 function renderChips() {
   $("#field-chips").innerHTML = '<span class="hint">Insert:</span>' +
-    S.columns.filter(c => c !== "attachment").map(c => `<button class="chip" data-col="${esc(c)}">{${esc(c)}}</button>`).join("");
+    S.columns.filter(c => c !== "attachment").map(c => `<button class="chip" data-col="${esc(c)}">${esc(token(c))}</button>`).join("");
 }
 let lastField = "body";
-["subject", "body"].forEach(id => $("#" + id).addEventListener("focus", () => lastField = id));
+["subject", "body", "html"].forEach(id => $("#" + id).addEventListener("focus", () => lastField = id));
 $("#field-chips").onclick = e => {
   const c = e.target.closest(".chip"); if (!c) return;
-  const el = $("#" + lastField), ins = "{" + c.dataset.col + "}";
+  const el = $("#" + lastField), ins = token(c.dataset.col);
   const s = el.selectionStart ?? el.value.length, en = el.selectionEnd ?? s;
   el.setRangeText(ins, s, en, "end");
   el.focus();
@@ -836,6 +900,50 @@ $("#field-chips").onclick = e => {
 };
 $("#subject").oninput = e => { S.subject = e.target.value; saveTemplate(); preview(); };
 $("#body").oninput = e => { S.body = e.target.value; saveTemplate(); preview(); };
+$("#html").oninput = e => { S.html = e.target.value; saveTemplate(); preview(); };
+
+function renderLibrary() {
+  $("#tpl-del").innerHTML = X;
+  $("#tpl-pick").innerHTML = S.templates.length
+    ? '<option value="">Saved templates…</option>' + S.templates.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join("")
+    : '<option value="">No saved templates</option>';
+  $("#tpl-load").disabled = $("#tpl-del").disabled = !S.templates.length;
+}
+const pickedTemplate = () => S.templates.find(t => t.name === $("#tpl-pick").value);
+function applyTemplate(t) {
+  Object.assign(S, { subject: t.subject, body: t.body, html: t.html || "" });
+  $("#subject").value = S.subject; $("#body").value = S.body; $("#html").value = S.html;
+  $("#html-box").open = !!S.html.trim();
+  saveTemplate(); preview();
+}
+$("#tpl-load").onclick = async () => {
+  const t = pickedTemplate();
+  if (!t) return toast("Choose a saved template first.", true);
+  if ((S.subject || S.body || S.html) && !await confirmDlg("Load template?",
+    `<p>Replace the current subject and message with <b>${esc(t.name)}</b>?</p><p class="help">Save the current one first if you want to keep it.</p>`, "Load")) return;
+  applyTemplate(t);
+  toast(`Loaded “${t.name}”`);
+};
+$("#tpl-save").onclick = async () => {
+  const cur = pickedTemplate()?.name || "";
+  if (!await confirmDlg("Save template", `<p>Save the current subject and message (and HTML) under a name, to reuse later.</p>
+      <label class="f" for="d-name">Name</label><input type="text" id="d-name" maxlength="60" value="${esc(cur)}">`, "Save")) return;
+  const name = $("#d-name").value.trim();
+  if (!name) return toast("Enter a name.", true);
+  const exists = S.templates.some(t => t.name.toLowerCase() === name.toLowerCase());
+  if (exists && !await confirmDlg("Replace template?", `<p>Overwrite the saved template <b>${esc(name)}</b>?</p>`, "Replace", true)) return;
+  try {
+    S.templates = (await api("/api/save-template-as", { name, ...tpl(), overwrite: exists })).templates;
+    renderLibrary(); $("#tpl-pick").value = name; toast(`Saved “${name}”`);
+  } catch (e) { toast(e.message, true); }
+};
+$("#tpl-del").onclick = async () => {
+  const t = pickedTemplate();
+  if (!t) return toast("Choose a saved template first.", true);
+  if (!await confirmDlg("Delete template?", `<p>Delete the saved template <b>${esc(t.name)}</b>? The current message is not affected.</p>`, "Delete", true)) return;
+  try { S.templates = (await api("/api/delete-template", { name: t.name })).templates; renderLibrary(); toast("Template deleted"); }
+  catch (e) { toast(e.message, true); }
+};
 
 function renderPicker() {
   const sel = $("#pick");
@@ -851,11 +959,22 @@ $("#pick").onchange = e => { S.pick = +e.target.value; renderPicker(); preview()
 $("#prev").onclick = () => { S.pick--; renderPicker(); preview(); };
 $("#next").onclick = () => { S.pick++; renderPicker(); preview(); };
 
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const highlight = (text, missing) => {
   let h = esc(text);
-  for (const m of missing) h = h.split("{" + esc(m) + "}").join(`<mark>{${esc(m)}}</mark>`);
+  for (const m of missing) h = h.replace(new RegExp(`\\{\\{\\s*${reEsc(esc(m))}\\s*\\}\\}|\\{${reEsc(esc(m))}\\}`, "g"), x => `<mark>${x}</mark>`);
   return h;
 };
+/* The HTML preview runs in a sandboxed iframe (no scripts, no same-origin access). */
+function htmlFrame(html) {
+  const f = document.createElement("iframe");
+  f.className = "html-frame";
+  f.setAttribute("sandbox", "");
+  f.setAttribute("referrerpolicy", "no-referrer");
+  f.title = "HTML preview";
+  f.srcdoc = `<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font:14px/1.6 system-ui,sans-serif;margin:16px 18px;color:#1c2026;background:#fff}img{max-width:100%}</style>${html}`;
+  return f;
+}
 let pvTimer, pvSeq = 0;
 function preview() {
   clearTimeout(pvTimer);
@@ -865,7 +984,7 @@ function preview() {
     if (!row) { box.innerHTML = '<div class="empty">Add a recipient to see a preview.</div>'; return; }
     const seq = ++pvSeq;
     try {
-      const { items: [it] } = await api("/api/preview", { subject: S.subject, body: S.body, rows: [row] });
+      const { items: [it] } = await api("/api/preview", { ...tpl(), rows: [row] });
       if (seq !== pvSeq) return;
       let note = "";
       if (it.error) note = `<div class="notice err">${esc(it.error)}</div>`;
@@ -878,8 +997,11 @@ function preview() {
           <span class="k">To</span><span>${esc(it.email)}</span>
         </div>
         <div class="mail-subject">${highlight(it.subject, it.missing) || '<span style="color:var(--muted)">(no subject)</span>'}</div>
-        <div class="mail-body">${highlight(it.body, it.missing)}</div>
+        ${it.html ? `<div id="html-slot" style="margin-top:12px"></div>
+          <details class="alt-text"><summary>Plain-text version (for mail apps that don't show HTML)</summary><div class="mail-body" style="padding:8px 0 0">${highlight(it.body, it.missing)}</div></details>`
+          : `<div class="mail-body">${highlight(it.body, it.missing)}</div>`}
         ${it.attachments.length ? `<div class="mail-att">${it.attachments.map(a => `<span class="file-pill">📎 ${esc(a)}</span>`).join("")}</div>` : ""}`;
+      if (it.html) $("#html-slot").replaceWith(htmlFrame(it.html));
     } catch (e) {
       if (seq === pvSeq) box.innerHTML = `<div class="notice err" style="margin-bottom:16px">${esc(e.message)}</div>`;
     }
@@ -890,7 +1012,7 @@ $("#test-email").onclick = async () => {
   if (!S.subject.trim()) return toast("Add a subject first.", true);
   const b = $("#test-email");
   b.disabled = true; b.textContent = "Sending…";
-  try { toast((await api("/api/test-email", { subject: S.subject, body: S.body, row: S.rows[S.pick] || {} })).message); }
+  try { toast((await api("/api/test-email", { ...tpl(), row: S.rows[S.pick] || {} })).message); }
   catch (e) { toast(e.message, true); }
   finally { b.disabled = false; b.textContent = "Send test to me"; }
 };
@@ -983,20 +1105,6 @@ $("#dedupe").onclick = async () => {
   toast(`Removed ${dupes + blank} rows`);
 };
 
-function parseCSV(text) {
-  const rows = []; let row = [], f = "", q = false;
-  text = text.replace(/^﻿/, "");
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; }
-    else if (ch === '"') q = true;
-    else if (ch === ",") { row.push(f); f = ""; }
-    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
-    else f += ch;
-  }
-  if (f || row.length) { row.push(f); rows.push(row); }
-  return rows.filter(r => r.some(v => v.trim()));
-}
 const csvCell = v => { v = String(v ?? ""); return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
 function download(name, text, type = "text/csv") {
   const a = document.createElement("a");
@@ -1011,13 +1119,24 @@ $("#import-btn").onclick = () => $("#import-file").click();
 $("#import-file").onchange = async e => {
   const file = e.target.files[0]; e.target.value = "";
   if (!file) return;
-  const data = parseCSV(await file.text());
-  if (!data.length) return toast("That file is empty", true);
-  const cols = data[0].map(c => c.trim().toLowerCase() === "email" ? "email" : c.trim().replace(/[{}]/g, ""));
-  if (!cols.includes("email")) return toast("The CSV needs an 'email' column", true);
-  const rows = data.slice(1).map(r => Object.fromEntries(cols.map((c, i) => [c, (r[i] || "").trim()])));
-  const replace = S.rows.length && await confirmDlg("Import CSV",
-    `<p><b>${rows.length}</b> recipients found in ${esc(file.name)}.</p><p>Replace the current list, or cancel to add them to it?</p>`, "Replace list");
+  if (file.size > 10 * 1048576) return toast("That file is larger than 10 MB", true);
+  let parsed;
+  try { parsed = await api("/api/parse-csv", await file.arrayBuffer(), true); }
+  catch (er) { return toast(er.message, true); }
+  const { columns: cols, rows, info, report: rp } = parsed;
+  if (!rows.length) return toast("No recipients found in that file", true);
+  const delim = { ",": "comma", ";": "semicolon", "\t": "tab", "|": "pipe" }[info.delimiter] || info.delimiter;
+  const summary = `<p><b>${rows.length}</b> rows found in ${esc(file.name)} (${delim}-separated, email column <b>${esc(info.email_column)}</b>).</p>
+    <ul class="help" style="margin:0 0 10px;padding-left:18px">
+      <li>${rp.valid} valid</li>
+      ${rp.invalid.length ? `<li style="color:var(--err)">${rp.invalid.length} invalid: ${rp.invalid.slice(0, 3).map(b => `row ${b.row} <code>${esc(b.email)}</code>`).join(", ")}${rp.invalid.length > 3 ? "…" : ""}</li>` : ""}
+      ${rp.duplicates.length ? `<li>${rp.duplicates.length} duplicate (use Remove duplicates after importing)</li>` : ""}
+      ${rp.blank.length ? `<li>${rp.blank.length} with no email</li>` : ""}
+    </ul>`;
+  const replace = S.rows.length ? await confirmDlg("Import CSV",
+    summary + `<p>Replace the current list, or cancel to add them to it?</p>`, "Replace list")
+    : (await confirmDlg("Import CSV", summary, "Import") || null);
+  if (replace === null) return;
   if (replace || !S.rows.length) { S.columns = cols; S.rows = rows; }
   else { cols.forEach(c => S.columns.includes(c) || S.columns.push(c)); S.rows.push(...rows); }
   saveRecipients(); renderChips(); renderGrid(); renderPicker();
@@ -1071,7 +1190,7 @@ async function checkAll() {
   renderResend();
   try {
     await flushSaves();
-    const { items } = await api("/api/preview", { subject: S.subject, body: S.body, rows: S.rows });
+    const { items } = await api("/api/preview", { ...tpl(), rows: S.rows });
     const problems = [];
     items.forEach((it, i) => {
       if (it.error) problems.push([i, it.email || "(no email)", it.error]);
@@ -1091,7 +1210,13 @@ async function checkAll() {
     const block = canSend();
     if (block) $("#go-text").innerHTML = block;
     else if (!ready) $("#go-text").textContent = done ? "Everyone has been sent to. Use Resend below to send again." : "Nothing new to send.";
-    else $("#go-text").textContent = `${plural(ready, "email")} will be sent from ${S.config.from_email}, ${S.config.delay}s apart.`;
+    else {
+      const c = S.config, left = c.daily_limit ? Math.max(0, c.daily_limit - c.sent_24h) : Infinity;
+      let t = `${plural(ready, "email")} will be sent from ${c.from_email}, ${c.delay}s apart.`;
+      if (c.daily_limit) t += ` ${c.sent_24h} of your ${c.daily_limit}/day limit used in the last 24 hours.`;
+      if (left < ready) t += ` Only ${left} will go out now; resume the campaign later for the rest.`;
+      $("#go-text").textContent = t;
+    }
     $("#send-btn").textContent = ready ? `Send ${plural(ready, "email")}` : "Send emails";
     $("#send-btn").disabled = !ready || !!block || running;
   } catch (e) {
@@ -1099,11 +1224,61 @@ async function checkAll() {
   }
 }
 async function startSend(extra = {}) {
-  await api("/api/send", { subject: S.subject, body: S.body, columns: S.columns, rows: S.rows, ...extra });
+  await api("/api/send", { ...tpl(), columns: S.columns, rows: S.rows, ...extra });
   evCount = 0;
   $("#events").innerHTML = "";
   startPolling();
 }
+async function resumeCampaign(id) {
+  const c = S.campaigns.find(x => x.id === id);
+  if (!c) return;
+  const block = canSend();
+  if (block && !S.config?.has_password) return toast(block.replace(/<[^>]+>/g, ""), true);
+  if (running) return toast("A send is already running.", true);
+  if (!await confirmDlg("Resume campaign?",
+    `<p>Continue <b>${esc(c.subject || "(no subject)")}</b> from ${esc(fmtTime(c.started))} using the list and message saved with it.</p>
+     <p class="help">${plural(c.sent, "person")} already received it and will be skipped. Your current list and message are not changed.</p>`, "Resume")) return;
+  try {
+    await api("/api/resume", { id });
+    evCount = 0; $("#events").innerHTML = "";
+    show("send"); startPolling(); loadCampaigns();
+  } catch (e) { toast(e.message, true); }
+}
+
+const CP_BADGE = { completed: "ok", running: "info", stopped: "warn", interrupted: "warn", failed: "err" };
+async function loadCampaigns() {
+  try {
+    const r = await api("/api/campaigns");
+    S.campaigns = r.campaigns;
+    if (S.config) S.config.sent_24h = r.sent_24h;
+    renderCampaigns();
+  } catch {}
+}
+function renderCampaigns() {
+  const f = $("#cp-filter").value, q = $("#cp-search").value.trim().toLowerCase();
+  const list = S.campaigns.filter(c => (!f || c.status === f) && (!q || c.subject.toLowerCase().includes(q) || c.id.includes(q)));
+  $("#cp-count").textContent = S.campaigns.length;
+  const canResume = c => ["stopped", "interrupted", "failed"].includes(c.status);
+  $("#campaigns").innerHTML = list.length
+    ? `<thead><tr><th>Started</th><th>Subject</th><th>Status</th><th>Sent</th><th>Failed</th><th>Skipped</th><th>From</th><th></th></tr></thead><tbody>` +
+      list.map(c => `<tr><td style="white-space:nowrap">${esc(fmtTime(c.started))}</td>
+        <td>${esc(c.subject || "(no subject)")}${c.error ? `<div class="help" style="margin:2px 0 0">${esc(c.error)}</div>` : ""}</td>
+        <td><span class="badge ${CP_BADGE[c.status] || "mute"}">${esc(c.status)}</span></td>
+        <td>${c.sent}</td><td>${c.failed}</td><td>${c.skipped}</td><td>${esc(c.source)}</td>
+        <td style="white-space:nowrap;text-align:right">${canResume(c) ? `<button class="btn sm" data-resume="${esc(c.id)}">Resume</button> ` : ""}<a class="btn sm" href="/api/campaign.csv?id=${encodeURIComponent(c.id)}" download>Export</a></td></tr>`).join("") + "</tbody>"
+    : `<tbody><tr><td class="empty">${S.campaigns.length ? "No campaigns match." : "No campaigns yet. Each send creates one."}</td></tr></tbody>`;
+  const cut = S.campaigns.find(c => c.status === "interrupted");
+  const banner = $("#interrupted");
+  banner.hidden = !cut || running;
+  if (cut) banner.innerHTML = `<p><b>A campaign was interrupted.</b> “${esc(cut.subject || "(no subject)")}” started ${esc(fmtTime(cut.started))} stopped after ${plural(cut.sent, "email")}. Resume it to send to everyone who hasn't received it yet.</p>
+    <button class="btn primary sm" data-resume="${esc(cut.id)}">Resume</button>`;
+}
+$("#cp-filter").onchange = renderCampaigns;
+$("#cp-search").oninput = renderCampaigns;
+document.addEventListener("click", e => {
+  const r = e.target.closest("[data-resume]");
+  if (r) resumeCampaign(r.dataset.resume);
+});
 $("#send-btn").onclick = async () => {
   const { ready, problems } = checkResult;
   const ok = await confirmDlg("Send emails?",
@@ -1146,8 +1321,8 @@ async function poll() {
   catch (e) { if ($("#login").hidden) setTimeout(poll, 1500); return; }
   const ev = $("#events");
   for (const e of p.events) {
-    const cls = { SENT: "ok", FAILED: "err", SKIP: "mute" }[e.status];
-    const label = e.status === "SKIP" ? "Skipped" : e.status === "SENT" ? (e.detail === "resend" ? "Resent" : "Sent") : "Failed";
+    const cls = { SENT: "ok", FAILED: "err", SKIP: "mute", RETRY: "warn" }[e.status];
+    const label = { SKIP: "Skipped", RETRY: "Retrying", FAILED: "Failed" }[e.status] || (e.detail === "resend" ? "Resent" : "Sent");
     const detail = e.detail && e.detail !== "resend" ? ` <span style="color:var(--muted)">· ${esc(e.detail)}</span>` : "";
     ev.insertAdjacentHTML("afterbegin", `<div><span class="n">${e.i}/${p.total}</span><span><span class="badge ${cls}">${label}</span></span><span>${esc(e.email)}${detail}</span></div>`);
     if (e.status === "SENT") S.sent.add(e.email.toLowerCase());
@@ -1162,6 +1337,7 @@ async function poll() {
   if (p.error) toast(p.error, true);
   else toast(`Done. ${p.sent} sent, ${p.failed} failed.`);
   await refreshLog();
+  await loadCampaigns();
   renderGrid();
   checkAll();
 }
@@ -1242,7 +1418,18 @@ $("#clear-log").onclick = async () => {
   catch (e) { toast(e.message, true); }
 };
 
-const CFG = ["from_name", "from_email", "host", "port", "username", "delay"];
+const CFG = ["from_name", "from_email", "reply_to", "host", "port", "username", "delay", "daily_limit", "max_retries", "retry_delay"];
+
+async function loadHealth() {
+  const ul = $("#health");
+  ul.innerHTML = '<li class="help">Checking…</li>';
+  try {
+    const { checks } = await api("/api/health");
+    const B = { ok: ["ok", "OK"], warn: ["warn", "Check"], err: ["err", "Fix"] };
+    ul.innerHTML = checks.map(c => `<li><span class="badge ${B[c.level][0]}">${B[c.level][1]}</span><b>${esc(c.name)}</b><span class="d">${esc(c.detail)}</span></li>`).join("");
+  } catch (e) { ul.innerHTML = `<li><span class="badge err">Error</span>${esc(e.message)}</li>`; }
+}
+$("#health-run").onclick = loadHealth;
 function renderConfig(err) {
   $("#cfg-error").innerHTML = err ? `<div class="notice err" style="margin:0 0 14px">${esc(err)}</div>` : "";
   const c = S.config || {};
@@ -1255,7 +1442,7 @@ $("#cfg").onsubmit = async e => {
   e.preventDefault();
   const d = Object.fromEntries(CFG.map(k => [k, $("#c-" + k).value]));
   d.password = $("#c-password").value;
-  try { S.config = (await api("/api/config", d)).config; renderConfig(); toast("Settings saved"); preview(); loadSecurity(); }
+  try { S.config = (await api("/api/config", d)).config; renderConfig(); toast("Settings saved"); preview(); loadSecurity(); loadHealth(); }
   catch (er) { toast(er.message, true); }
 };
 $("#test-btn").onclick = async () => {
@@ -1392,7 +1579,7 @@ async function loadAbout() {
         <span class="k">Address</span><span><code>${esc(a.url)}</code> (this computer only)</span>
         <span class="k">Running since</span><span>${esc(fmtTime(a.started))}</span>
         <span class="k">Folder</span><span><code>${esc(a.folder)}</code></span>
-        <span class="k">Data</span><span>${plural(a.counts.recipients, "recipient")} · ${plural(a.counts.columns, "column")} · ${a.counts.sent} sent · ${plural(a.counts.log, "log entry").replace("entrys", "entries")} · ${plural(a.counts.attachments, "attachment")} · ${plural(a.counts.backups, "backup")}</span>
+        <span class="k">Data</span><span>${plural(a.counts.recipients, "recipient")} · ${plural(a.counts.columns, "column")} · ${a.counts.sent} sent · ${plural(a.counts.log, "log entry").replace("entrys", "entries")} · ${plural(a.counts.campaigns, "campaign")} · ${plural(a.counts.templates, "saved template")} · ${plural(a.counts.attachments, "attachment")} · ${plural(a.counts.backups, "backup")}</span>
       </div>
       <table><thead><tr><th>File</th><th>Size</th><th>Modified</th></tr></thead><tbody>${files}</tbody></table>`;
   } catch (e) { $("#about").innerHTML = `<div class="notice err" style="margin:0">${esc(e.message)}</div>`; }
@@ -1406,12 +1593,15 @@ $("#toc").onclick = e => {
 
 async function loadState() {
   const st = await api("/api/state");
-  Object.assign(S, { subject: st.subject, body: st.body, columns: st.columns, rows: st.rows, config: st.config,
-    attachments: st.attachments, log: st.log, sent: new Set(st.sent) });
+  Object.assign(S, { subject: st.subject, body: st.body, html: st.html || "", columns: st.columns, rows: st.rows, config: st.config,
+    attachments: st.attachments, log: st.log, sent: new Set(st.sent), templates: st.templates, campaigns: st.campaigns });
   $("#subject").value = S.subject;
   $("#body").value = S.body;
+  $("#html").value = S.html;
+  $("#html-box").open = !!S.html.trim();
   $("#search").value = "";
   renderChips(); renderGrid(); renderAttachments(); renderLog(); renderResend(); renderConfig(st.config_error); renderPicker(); preview();
+  renderLibrary(); renderCampaigns();
   setSave("", "All changes saved");
   return st;
 }

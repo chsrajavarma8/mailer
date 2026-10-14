@@ -13,6 +13,7 @@ import re
 import secrets
 import shutil
 import smtplib
+import sys
 import threading
 import time
 import webbrowser
@@ -26,19 +27,25 @@ import secure_store
 import send_mails as sm
 
 APP_NAME = "Mailer"
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 BASE_DIR = sm.BASE_DIR
+RES_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR))  # bundled read-only files when packaged as an .exe
 CSV_FILE = BASE_DIR / "recipients.csv"
 TEMPLATE_FILE = BASE_DIR / "template.txt"
+TEMPLATE_HTML = BASE_DIR / "template.html"
 CONFIG_FILE = BASE_DIR / "config.ini"
 ATTACH_DIR = sm.ATTACH_DIR
 BACKUP_DIR = BASE_DIR / "backups"
+SAVED_DIR = BASE_DIR / "saved_templates"
 AUDIT_FILE = BASE_DIR / "audit_log.csv"
-UI_FILE = BASE_DIR / "ui" / "index.html"
+UI_FILE = RES_DIR / "ui" / "index.html"
 
 MAX_JSON = 5 * 1024 * 1024
 MAX_UPLOAD = 25 * 1024 * 1024
+MAX_CSV = 10 * 1024 * 1024
+TEMPLATE_NAME_RE = re.compile(r"^\w[\w .()-]{0,59}$")
+RESERVED_NAMES = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
 BLOCKED_EXT = {".exe", ".bat", ".cmd", ".com", ".scr", ".pif", ".msi", ".msp", ".vbs", ".vbe", ".js",
                ".jse", ".wsf", ".wsh", ".ps1", ".psm1", ".hta", ".cpl", ".jar", ".lnk", ".reg", ".dll", ".sys"}
 PBKDF2_ITER = 600_000
@@ -65,28 +72,38 @@ def safe(fn, *args):
 
 
 def read_template():
+    html_body = sm.load_html(TEMPLATE_HTML)
     if not TEMPLATE_FILE.exists():
-        return "", ""
-    text = TEMPLATE_FILE.read_text(encoding="utf-8")
+        return "", "", html_body
+    text = sm.read_text(TEMPLATE_FILE)
     first, _, body = text.partition("\n")
     if first.lower().startswith("subject:"):
-        return first.split(":", 1)[1].strip(), body.lstrip("\n")
-    return "", text
+        return first.split(":", 1)[1].strip(), body.lstrip("\n"), html_body
+    return "", text, html_body
 
 
-def write_template(subject, body):
-    subject = subject.replace("\r", " ").replace("\n", " ").strip()
-    TEMPLATE_FILE.write_text(f"Subject: {subject}\n\n{body}", encoding="utf-8")
+def write_template(subject, body, html_body=None):
+    subject = str(subject or "").replace("\r", " ").replace("\n", " ").strip()
+    TEMPLATE_FILE.write_text(f"Subject: {subject}\n\n{body or ''}", encoding="utf-8")
+    if html_body is not None:
+        if str(html_body).strip():
+            TEMPLATE_HTML.write_text(str(html_body), encoding="utf-8")
+        elif TEMPLATE_HTML.exists():
+            TEMPLATE_HTML.unlink()
 
 
 def read_recipients():
     if not CSV_FILE.exists():
         return ["email", "name"], []
-    with open(CSV_FILE, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
+    text = sm.read_text(CSV_FILE)
+    try:
+        columns, rows, _ = sm.parse_recipients(text)
+        return columns, rows
+    except ValueError:
+        reader = csv.DictReader(text.lstrip("﻿").splitlines())
         columns = [c.strip() for c in (reader.fieldnames or []) if c]
         rows = [{k.strip(): (v or "").strip() for k, v in r.items() if k} for r in reader]
-    return columns or ["email"], rows
+        return columns or ["email"], rows
 
 
 def write_recipients(columns, rows):
@@ -117,7 +134,12 @@ def read_config_public():
         "has_password": bool(cfg["password"]),
         "from_name": cfg["from_name"],
         "from_email": cfg["from_email"],
+        "reply_to": cfg["reply_to"],
         "delay": cfg["delay"],
+        "max_retries": cfg["max_retries"],
+        "retry_delay": cfg["retry_delay"],
+        "daily_limit": cfg["daily_limit"],
+        "sent_24h": sm.sent_since(24),
     }
 
 
@@ -160,34 +182,57 @@ def list_attachments():
     )
 
 
-def read_log():
-    if not sm.LOG_FILE.exists():
-        return []
-    with open(sm.LOG_FILE, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+read_log = sm.read_log
 
 
-def render(cfg, row, subject, body, skip):
-    item = {"email": row.get("email", ""), "already_sent": row.get("email", "").lower() in skip}
-    if not item["email"]:
+def render(cfg, row, subject, body, skip, html_body=""):
+    row = {str(k): "" if v is None else str(v) for k, v in row.items()}
+    email = row.get("email", "").strip()
+    item = {"email": email, "already_sent": email.lower() in skip}
+    if not email:
         item["error"] = "missing email address"
         return item
     try:
-        msg = sm.build_message(cfg, row, subject, body)
+        msg = sm.build_message(cfg, row, subject, body, html_body)
     except Exception as e:
         item["error"] = str(e)
         return item
+    html_part = msg.get_body(("html",))
     item.update(
         from_=msg["From"],
         subject=msg["Subject"],
-        body=msg.get_body().get_content(),
+        body=msg.get_body(("plain",)).get_content(),
+        html=html_part.get_content() if html_part else "",
         attachments=[p.get_filename() for p in msg.iter_attachments()],
-        missing=sorted(set(re.findall(r"\{(\w+)\}", subject + body)) - set(row)),
+        missing=sm.missing_fields(row, subject, body, html_body),
     )
     return item
 
 
-DATA_FILES = {"recipients": CSV_FILE, "template": TEMPLATE_FILE, "history": sm.LOG_FILE}
+def saved_template_path(name):
+    name = str(name or "").strip()
+    if not TEMPLATE_NAME_RE.match(name) or name.endswith(".") or name.split(".")[0].lower() in RESERVED_NAMES:
+        raise UserError("Use a template name of letters, numbers, spaces, dots, dashes or brackets (max 60).")
+    return SAVED_DIR / f"{name}.json"
+
+
+def list_saved_templates():
+    if not SAVED_DIR.exists():
+        return []
+    out = []
+    for p in sorted(SAVED_DIR.glob("*.json"), key=lambda p: p.stem.lower()):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        out.append({"name": p.stem, "subject": str(d.get("subject", "")), "body": str(d.get("body", "")),
+                    "html": str(d.get("html", "")),
+                    "modified": datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds")})
+    return out
+
+
+DATA_FILES = {"recipients": CSV_FILE, "template": TEMPLATE_FILE, "template_html": TEMPLATE_HTML,
+              "history": sm.LOG_FILE}
 
 
 def make_backup(reason):
@@ -364,8 +409,8 @@ throttle = Throttle()
 class SendJob:
     def __init__(self):
         self.lock = threading.Lock()
-        self.state = {"running": False, "events": [], "total": 0, "sent": 0,
-                      "failed": 0, "skipped": 0, "error": None, "finished": False, "resend": False}
+        self.state = {"running": False, "events": [], "total": 0, "sent": 0, "failed": 0, "skipped": 0,
+                      "error": None, "finished": False, "resend": False, "campaign": None}
         self.stop_flag = threading.Event()
 
     def snapshot(self, since=0):
@@ -375,73 +420,47 @@ class SendJob:
             s["event_count"] = len(self.state["events"])
             return s
 
-    def _event(self, i, email, status, detail=""):
+    def _event(self, i, total, email, status, detail=""):
         with self.lock:
             self.state["events"].append({"i": i, "email": email, "status": status, "detail": detail})
             key = {"SENT": "sent", "FAILED": "failed", "SKIP": "skipped"}.get(status)
             if key:
                 self.state[key] += 1
 
-    def start(self, rows, subject, body, resend=frozenset()):
+    def start(self, rows, subject, body, html_body="", columns=None, resend=frozenset(), campaign=None):
+        cfg = safe(sm.load_config, CONFIG_FILE)
+        if not cfg["password"]:
+            raise UserError("No password set. Add an App Password in Settings.")
         with self.lock:
             if self.state["running"]:
                 raise UserError("A send is already running.")
+            if campaign is None:
+                campaign = sm.new_campaign(subject, body, html_body, columns or ["email"], rows, "dashboard")
             self.state = {"running": True, "events": [], "total": len(rows), "sent": 0, "failed": 0,
-                          "skipped": 0, "error": None, "finished": False, "resend": bool(resend)}
+                          "skipped": 0, "error": None, "finished": False, "resend": bool(resend),
+                          "campaign": campaign}
         self.stop_flag.clear()
-        threading.Thread(target=self._run, args=(rows, subject, body, resend), daemon=True).start()
+        threading.Thread(target=self._run, args=(cfg, rows, subject, body, html_body, columns, resend, campaign),
+                         daemon=True).start()
+        return campaign
 
-    def _run(self, rows, subject, body, resend):
+    def _run(self, cfg, rows, subject, body, html_body, columns, resend, campaign):
+        error = None
         try:
-            cfg = safe(sm.load_config, CONFIG_FILE)
-            if not cfg["password"]:
-                raise UserError("No password set. Add an App Password in Settings.")
-            skip = sm.already_sent() - resend
-            done = set()
-            with sm.Mailer(cfg) as mailer:
-                for i, row in enumerate(rows, 1):
-                    if self.stop_flag.is_set():
-                        with self.lock:
-                            self.state["error"] = "Stopped by you."
-                        break
-                    email = row.get("email", "").strip()
-                    key = email.lower()
-                    if not email:
-                        self._event(i, "(blank)", "SKIP", "no email address")
-                        continue
-                    if key in skip:
-                        self._event(i, email, "SKIP", "already sent")
-                        continue
-                    if key in done:
-                        self._event(i, email, "SKIP", "duplicate in list")
-                        continue
-                    try:
-                        mailer.send(sm.build_message(cfg, row, subject, body))
-                        note = "resend" if key in resend else ""
-                        sm.write_log(email, "SENT", note)
-                        done.add(key)
-                        self._event(i, email, "SENT", note)
-                    except smtplib.SMTPAuthenticationError:
-                        raise
-                    except Exception as e:
-                        sm.write_log(email, "FAILED", str(e))
-                        self._event(i, email, "FAILED", str(e))
-                    if i < len(rows):
-                        self.stop_flag.wait(cfg["delay"])
-        except smtplib.SMTPAuthenticationError:
-            with self.lock:
-                self.state["error"] = ("Login failed. Gmail needs a 16-character App Password, "
-                                       "not your normal password.")
+            result = sm.run_campaign(cfg, rows, subject, body, html_body, columns=columns, resend=resend,
+                                     on_event=self._event, stop=self.stop_flag, source="dashboard",
+                                     campaign=campaign)
+            error = result["error"]
         except Exception as e:
-            with self.lock:
-                self.state["error"] = str(e)
+            error = str(e)
         finally:
             with self.lock:
+                self.state["error"] = error
                 self.state["running"] = False
                 self.state["finished"] = True
-                s = self.state
-            audit("send_finished", f"sent {s['sent']}, failed {s['failed']}, skipped {s['skipped']}"
-                  + (f" ({s['error']})" if s["error"] else ""))
+                s = dict(self.state)
+            audit("send_finished", f"campaign {campaign}: sent {s['sent']}, failed {s['failed']}, "
+                  f"skipped {s['skipped']}" + (f" ({error})" if error else ""))
 
 
 job = SendJob()
@@ -482,6 +501,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(data)
+
+    def _csv(self, filename, text):
+        return self._send(200, ("﻿" + text).encode("utf-8"), "text/csv; charset=utf-8",
+                          {"Content-Disposition": f'attachment; filename="{filename}"'})
 
     def _cookie(self, sid, clear=False):
         attrs = "HttpOnly; SameSite=Strict; Path=/"
@@ -559,9 +582,17 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/log":
                 return self._send(200, {"log": read_log()})
             if url.path == "/api/log.csv":
-                data = sm.LOG_FILE.read_bytes() if sm.LOG_FILE.exists() else b"timestamp,email,status,detail\n"
-                return self._send(200, data, "text/csv; charset=utf-8",
-                                  {"Content-Disposition": 'attachment; filename="sent_log.csv"'})
+                return self._csv("sent_log.csv", sm.to_csv(sm.LOG_FIELDS, read_log()))
+            if url.path == "/api/campaigns":
+                return self._send(200, {"campaigns": sm.list_campaigns(), "sent_24h": sm.sent_since(24)})
+            if url.path == "/api/campaign.csv":
+                cid = parse_qs(url.query).get("id", [""])[0]
+                sm.campaign_path(cid)
+                return self._csv(f"campaign-{cid}.csv", sm.to_csv(sm.LOG_FIELDS[:4], sm.campaign_results(cid)))
+            if url.path == "/api/health":
+                return self._send(200, {"checks": sm.health_checks(CONFIG_FILE, CSV_FILE, TEMPLATE_FILE, TEMPLATE_HTML)})
+            if url.path == "/api/templates":
+                return self._send(200, {"templates": list_saved_templates()})
             if url.path == "/api/security":
                 return self._send(200, self.security_state())
             if url.path == "/api/about":
@@ -639,14 +670,15 @@ class Handler(BaseHTTPRequestHandler):
         return {"ok": True}, self._cookie("", clear=True)
 
     def state(self):
-        subject, body = read_template()
+        subject, body, html_body = read_template()
         columns, rows = read_recipients()
         try:
             config, config_error = read_config_public(), None
         except UserError as e:
             config, config_error = None, str(e)
         return {
-            "subject": subject, "body": body, "columns": columns, "rows": rows,
+            "subject": subject, "body": body, "html": html_body, "columns": columns, "rows": rows,
+            "templates": list_saved_templates(), "campaigns": sm.list_campaigns(),
             "config": config, "config_error": config_error,
             "attachments": list_attachments(), "log": read_log(),
             "sent": sorted(sm.already_sent()), "job": job.snapshot(),
@@ -676,38 +708,80 @@ class Handler(BaseHTTPRequestHandler):
             "url": f"http://127.0.0.1:{self.server.server_address[1]}/",
             "started": STARTED.isoformat(timespec="seconds"),
             "folder": str(BASE_DIR),
-            "files": [info(p) for p in (CSV_FILE, TEMPLATE_FILE, CONFIG_FILE, sm.LOG_FILE, AUDIT_FILE)],
+            "files": [info(p) for p in (CSV_FILE, TEMPLATE_FILE, TEMPLATE_HTML, CONFIG_FILE, sm.LOG_FILE,
+                                        AUDIT_FILE, sm.CAMPAIGN_DIR / "index.csv")],
             "counts": {"recipients": len(rows), "columns": len(columns), "log": len(read_log()),
                        "sent": len(sm.already_sent()), "attachments": len(list_attachments()),
-                       "backups": len(list_backups())},
+                       "backups": len(list_backups()), "campaigns": len(sm.list_campaigns()),
+                       "templates": len(list_saved_templates())},
         }
 
     def post_template(self, url):
         d = self._json()
-        write_template(d.get("subject", ""), d.get("body", ""))
+        write_template(d.get("subject", ""), d.get("body", ""), d.get("html"))
 
     def post_recipients(self, url):
         d = self._json()
         write_recipients(d.get("columns", []), d.get("rows", []))
+
+    def post_parse_csv(self, url):
+        """Parse an uploaded CSV the same way the command line does: detect delimiter and email column."""
+        raw = self._body(MAX_CSV)
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = raw.decode("cp1252", errors="replace")
+        column = parse_qs(url.query).get("email_column", [""])[0] or None
+        try:
+            columns, rows, info = sm.parse_recipients(text, column)
+        except ValueError as e:
+            raise UserError(str(e))
+        return {"columns": columns, "rows": rows, "info": info, "report": sm.analyze(rows)}
 
     def post_preview(self, url):
         d = self._json()
         cfg = safe(sm.load_config, CONFIG_FILE)
         skip = sm.already_sent()
         rows = d.get("rows", [])
-        return {"items": [render(cfg, r, d.get("subject", ""), d.get("body", ""), skip) for r in rows]}
+        html_body = d.get("html", "")
+        return {"items": [render(cfg, r, d.get("subject", ""), d.get("body", ""), skip, html_body) for r in rows]}
+
+    def post_save_template_as(self, url):
+        d = self._json()
+        p = saved_template_path(d.get("name"))
+        if p.exists() and not d.get("overwrite"):
+            raise UserError(f'A template called "{p.stem}" already exists.')
+        SAVED_DIR.mkdir(exist_ok=True)
+        p.write_text(json.dumps({k: str(d.get(k) or "") for k in ("subject", "body", "html")}, indent=2),
+                     encoding="utf-8")
+        audit("template_saved", p.stem)
+        return {"ok": True, "templates": list_saved_templates()}
+
+    def post_delete_template(self, url):
+        p = saved_template_path(self._json().get("name"))
+        if p.exists():
+            p.unlink()
+            audit("template_deleted", p.stem)
+        return {"ok": True, "templates": list_saved_templates()}
 
     def post_config(self, url):
         d = self._json()
         try:
             port = int(d.get("port", 587))
             delay = float(d.get("delay", 2))
-        except ValueError:
-            raise UserError("Port and delay must be numbers.")
+            max_retries = int(d.get("max_retries", 3))
+            retry_delay = float(d.get("retry_delay", 5))
+            daily_limit = int(d.get("daily_limit", 500))
+        except (TypeError, ValueError):
+            raise UserError("Port, delay, retries and limits must be numbers.")
         if not 1 <= port <= 65535 or not 0 <= delay <= 600:
             raise UserError("Port must be 1-65535 and delay 0-600 seconds.")
+        if not 0 <= max_retries <= 10 or not 0 <= retry_delay <= 600 or not 0 <= daily_limit <= 100000:
+            raise UserError("Retries must be 0-10, retry delay 0-600 seconds and the daily limit 0-100000.")
         clean = {k: str(d.get(k, "")).replace("\r", "").replace("\n", "").strip()
-                 for k in ("host", "username", "from_name", "from_email")}
+                 for k in ("host", "username", "from_name", "from_email", "reply_to")}
+        if clean["reply_to"] and not sm.EMAIL_RE.match(clean["reply_to"]):
+            raise UserError("Reply-to must be an email address (or empty).")
         smtp = {"host": clean["host"], "port": port, "username": clean["username"]}
         pw = (d.get("password") or "").replace(" ", "").replace("\n", "").replace("\r", "")
         if pw:
@@ -716,8 +790,10 @@ class Handler(BaseHTTPRequestHandler):
             smtp["password"] = ""
         update_ini(CONFIG_FILE, {
             "smtp": smtp,
-            "sender": {"from_name": clean["from_name"], "from_email": clean["from_email"]},
-            "options": {"delay_seconds": delay},
+            "sender": {"from_name": clean["from_name"], "from_email": clean["from_email"],
+                       "reply_to": clean["reply_to"]},
+            "options": {"delay_seconds": delay, "max_retries": max_retries,
+                        "retry_delay_seconds": retry_delay, "daily_limit": daily_limit},
         })
         audit("settings_saved", "password changed" if pw else "")
         return {"ok": True, "config": read_config_public()}
@@ -747,7 +823,7 @@ class Handler(BaseHTTPRequestHandler):
         if not sm.EMAIL_RE.match(row["email"]):
             row["email"] = to
         try:
-            msg = sm.build_message(cfg, row, d.get("subject", ""), d.get("body", ""))
+            msg = sm.build_message(cfg, row, d.get("subject", ""), d.get("body", ""), d.get("html", ""))
         except Exception as e:
             raise UserError(str(e))
         msg.replace_header("To", to)
@@ -784,9 +860,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def post_send(self, url):
         d = self._json()
-        subject, body = d.get("subject", ""), d.get("body", "")
+        subject, body, html_body = d.get("subject", ""), d.get("body", ""), d.get("html", "")
         columns, rows = d.get("columns", []), d.get("rows", [])
-        write_template(subject, body)
+        write_template(subject, body, html_body)
         write_recipients(columns, rows)
         if not subject.strip():
             raise UserError("The subject is empty.")
@@ -796,8 +872,25 @@ class Handler(BaseHTTPRequestHandler):
             rows = [r for r in rows if str(r.get("email", "")).strip().lower() in only]
             if not rows:
                 raise UserError("None of the selected addresses are in the recipient list.")
-        job.start(rows, subject, body, resend)
-        audit("send_started", f"{len(rows)} recipient(s)" + (f", resending to {len(resend)}" if resend else ""))
+        rows = [{c: str(r.get(c, "")).strip() for c in columns} for r in rows]
+        cid = job.start(rows, subject, body, html_body, columns, resend)
+        audit("send_started", f"campaign {cid}: {len(rows)} recipient(s)"
+              + (f", resending to {len(resend)}" if resend else ""))
+        return {"ok": True, "campaign": cid}
+
+    def post_resume(self, url):
+        cid = str(self._json().get("id", ""))
+        try:
+            c = sm.load_campaign(cid)
+        except (ValueError, OSError, SystemExit) as e:
+            raise UserError(str(e) or "Campaign files not found.")
+        if not any(x["id"] == cid for x in sm.list_campaigns()):
+            raise UserError("Unknown campaign.")
+        if any(x["id"] == cid and x["status"] == "running" for x in sm.list_campaigns()):
+            raise UserError("That campaign is still running.")
+        job.start(c["rows"], c["subject"], c["body"], c["html"], c["columns"], campaign=cid)
+        audit("send_resumed", f"campaign {cid}")
+        return {"ok": True, "campaign": cid}
 
     def post_stop(self, url):
         job.stop_flag.set()
@@ -827,7 +920,7 @@ class Handler(BaseHTTPRequestHandler):
         if "recipients" in parts:
             write_recipients(["email", "name"], [])
         if "template" in parts:
-            write_template("", "")
+            write_template("", "", "")
         if "history" in parts and sm.LOG_FILE.exists():
             sm.LOG_FILE.unlink()
         if "attachments" in parts:
@@ -845,7 +938,7 @@ class Handler(BaseHTTPRequestHandler):
         for f in DATA_FILES.values():
             if (src / f.name).exists():
                 shutil.copy2(src / f.name, f)
-            elif f == sm.LOG_FILE and f.exists():
+            elif f in (sm.LOG_FILE, TEMPLATE_HTML) and f.exists():
                 f.unlink()
         if (src / "attachments").exists():
             clear_attachments()
@@ -913,13 +1006,20 @@ def main():
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
 
-    example = BASE_DIR / "config.example.ini"
+    example = RES_DIR / "config.example.ini"
     if not CONFIG_FILE.exists() and example.exists():
         shutil.copy(example, CONFIG_FILE)
         print("Created config.ini from config.example.ini. Fill it in under Settings.")
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://127.0.0.1:{args.port}/"
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError:
+        print(f"Port {args.port} is busy; {APP_NAME} is probably already running at {url}")
+        print("Opening it. To run a second copy, use --port with another number.")
+        if not args.no_browser:
+            webbrowser.open(url)
+        return
     print(f"{APP_NAME} {VERSION} running at {url}  (Ctrl+C to stop)")
     if smtp_password_storage() == "plaintext" and secure_store.available():
         print("Tip: your SMTP password is stored as plain text. Encrypt it in Settings > Security.")
